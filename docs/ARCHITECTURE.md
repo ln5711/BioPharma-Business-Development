@@ -91,11 +91,27 @@ resolution land in MVP 3. Reference ontology (`targets`, `pathways`, `diseases`,
 
 - `DATABASE_URL` set → `postgres-js`
 - empty → **PGlite** (embedded Postgres, WASM) at an absolute `PGLITE_DATA_DIR`
+  — **local development only**
 
 Both are real Postgres. `@electric-sql/pglite` and `postgres` are in
 `serverExternalPackages` so they load from `node_modules` at runtime rather than
-being bundled. The connection is created lazily (never at import time — that
-would boot PGlite during `next build`).
+being bundled.
+
+**Lazy, and never at import time.** The connection is created on the first
+`getDb()` call, not at module load. `next build` loads every route module to
+read its config; because no module-scope code calls `getDb()` and every
+DB-backed page is `force-dynamic`, the "Collecting page data" phase never
+contacts the database. A failed connection attempt is not cached, so a
+late-arriving `DATABASE_URL` recovers on the next request. Request-time DB
+failures (missing URL, un-migrated schema) render `src/app/(app)/error.tsx` — a
+styled "needs a database" notice — instead of a raw 500 stack.
+
+**PGlite is refused on managed hosts.** Serverless/edge platforms give a
+function an ephemeral, mostly read-only filesystem, so PGlite would fail to
+write during the build and would hand every request a fresh empty database.
+`createDb()` checks `VERCEL` / `NETLIFY` / `AWS_LAMBDA_FUNCTION_NAME` /
+`K_SERVICE` / `REQUIRE_POSTGRES=1`; on any of those with `DATABASE_URL` unset it
+throws an actionable error naming the fix rather than attempting the fallback.
 
 ## 6. MVP roadmap (spec §80)
 

@@ -5,19 +5,59 @@ import * as schema from "@/db/schema";
 /**
  * Driver selection.
  *
- *  • DATABASE_URL set  → Postgres via postgres-js (production / staging).
- *  • DATABASE_URL empty → embedded PGlite written to PGLITE_DATA_DIR so the
- *    whole platform runs with zero external services (spec §115 — build the
- *    interface, degrade gracefully, keep building).
+ *  • DATABASE_URL set  → Postgres via postgres-js (production / staging / CI).
+ *  • DATABASE_URL empty → embedded PGlite at PGLITE_DATA_DIR — LOCAL DEV ONLY.
  *
  * PGlite is real Postgres (WASM), so the schema, SQL migrations and query
  * builder are identical across both drivers. We expose the PGlite database type
  * as the common surface — the postgres-js instance satisfies the same query API.
+ *
+ * ── Why PGlite is dev-only ────────────────────────────────────────────────────
+ * PGlite persists to a directory on disk. Serverless / edge hosts (Vercel,
+ * Lambda, Cloud Run, …) give a function an ephemeral, mostly read-only
+ * filesystem, so PGlite there would (a) fail to write during the build's
+ * "Collecting page data" phase and (b) hand every request a brand-new empty
+ * database. On those hosts DATABASE_URL is mandatory. `createDb()` refuses to
+ * fall back to PGlite when it detects a managed host (or REQUIRE_POSTGRES=1),
+ * and throws an actionable error instead of a cryptic PGlite fs failure.
+ *
+ * ── Build-time safety ────────────────────────────────────────────────────────
+ * The connection is created lazily on first getDb() call — never at import time.
+ * `next build` loads every route module to collect its config; because no
+ * module-scope code calls getDb(), and every DB-backed page is `force-dynamic`,
+ * the database is never contacted during the build.
  */
 export type DrizzleDb = PgliteDatabase<typeof schema>;
 
+/** True on managed hosts where a persistent local filesystem does not exist. */
+const MANAGED_HOST =
+  !!process.env.VERCEL ||
+  !!process.env.NETLIFY ||
+  !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  !!process.env.K_SERVICE || // Cloud Run / Knative
+  process.env.REQUIRE_POSTGRES === "1";
+
+function missingDatabaseUrlError(): Error {
+  return new Error(
+    [
+      "DATABASE_URL is not set.",
+      "",
+      "This deployment target has no persistent writable filesystem, so the",
+      "embedded PGlite database cannot be used. Set DATABASE_URL to a Postgres",
+      "connection string — e.g. Vercel Postgres, Neon, Supabase, or RDS:",
+      "",
+      "  DATABASE_URL=postgres://user:password@host:5432/dbname",
+      "",
+      "Then run migrations against it: `npm run db:migrate` (with DATABASE_URL",
+      "in the environment). PGlite (DATABASE_URL unset) is for local dev only.",
+    ].join("\n"),
+  );
+}
+
 async function createDb(): Promise<DrizzleDb> {
   if (usingPglite) {
+    if (MANAGED_HOST) throw missingDatabaseUrlError();
+
     const { drizzle } = await import("drizzle-orm/pglite");
     const { PGlite } = await import("@electric-sql/pglite");
     const { resolve, isAbsolute } = await import("node:path");
@@ -29,6 +69,7 @@ async function createDb(): Promise<DrizzleDb> {
     const client = new PGlite(dir);
     return drizzle(client, { schema });
   }
+
   const { drizzle } = await import("drizzle-orm/postgres-js");
   const postgres = (await import("postgres")).default;
   const client = postgres(env.DATABASE_URL, { max: 10 });
@@ -40,11 +81,18 @@ const globalForDb = globalThis as unknown as { __db?: Promise<DrizzleDb> };
 /**
  * Convenience accessor: `const db = await getDb()`.
  * The connection is created lazily on first call (never at import time — that
- * would try to boot PGlite during `next build` page-data collection) and cached
- * across HMR reloads in dev.
+ * would try to boot a driver during `next build` page-data collection) and
+ * cached across HMR reloads in dev. A failed attempt is not cached, so a
+ * transient error (or a late-arriving DATABASE_URL) can recover on the next call.
  */
 export function getDb(): Promise<DrizzleDb> {
-  return (globalForDb.__db ??= createDb());
+  if (!globalForDb.__db) {
+    globalForDb.__db = createDb().catch((err) => {
+      globalForDb.__db = undefined;
+      throw err;
+    });
+  }
+  return globalForDb.__db;
 }
 
 export { schema };

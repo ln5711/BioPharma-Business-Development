@@ -34,10 +34,19 @@ npm run ingest:ctgov              # LIVE pull from ClinicalTrials.gov API v2
 npm run dev                       # http://localhost:3000
 ```
 
-No external services are required. With `DATABASE_URL` empty the app runs on an
-embedded **PGlite** database (real Postgres, WASM) written to `./.pglite`. Set
-`DATABASE_URL` to use a real Postgres instance instead — the schema, migrations
-and queries are identical.
+No external services are required **for local development**. With `DATABASE_URL`
+empty the app runs on an embedded **PGlite** database (real Postgres, WASM)
+written to `./.pglite`. Set `DATABASE_URL` to use a real Postgres instance
+instead — the schema, migrations and queries are identical.
+
+> **Deploying (Vercel / any serverless host): `DATABASE_URL` is required.**
+> Managed hosts have no persistent writable filesystem, so PGlite cannot be
+> used there — the app detects the host (`VERCEL`, `NETLIFY`,
+> `AWS_LAMBDA_FUNCTION_NAME`, `K_SERVICE`, or `REQUIRE_POSTGRES=1`) and refuses
+> to fall back, surfacing a clear "set DATABASE_URL" message instead of a
+> cryptic PGlite error. Use Vercel Postgres, Neon, Supabase, or RDS, then run
+> `npm run db:migrate` (and `npm run seed`) against that URL once. The build
+> itself never contacts the database.
 
 The language model is abstracted behind a provider interface. `LLM_PROVIDER=mock`
 (the default) produces deterministic, clearly-labelled text so every flow works
