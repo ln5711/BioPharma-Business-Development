@@ -44,6 +44,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# impeccable — design tooling installed per machine via `npx impeccable install`
+# (settings.local.json is already covered by *.local.json above)
+/.claude/skills/impeccable/
+/.claude/agents/impeccable-*.md
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
