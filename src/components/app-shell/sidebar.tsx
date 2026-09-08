@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Settings, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PRIMARY_NAV } from "./nav";
+import { ALL_NAV } from "./nav";
 
 /**
  * Deep-plum left rail. Active state is a quiet left marker + brightened label,
@@ -29,7 +29,7 @@ export function Sidebar() {
         </Link>
 
         <nav className="flex flex-col gap-px">
-          {PRIMARY_NAV.map((item, i) => {
+          {ALL_NAV.map((item, i) => {
             const active =
               item.href === "/"
                 ? pathname === "/"
@@ -41,7 +41,7 @@ export function Sidebar() {
                 className={cn(
                   "group relative flex items-center gap-3 rounded-[var(--radius-sm)] py-[7px] pl-3 pr-2.5 text-[13px] transition-colors",
                   active ? "text-white" : "hover:bg-white/[0.04]",
-                  i === 1 || i === 6 || i === 10 ? "mt-2" : "",
+                  i === 1 || i === 4 || i === 6 ? "mt-2" : "",
                 )}
                 style={active ? { background: "rgba(255,255,255,0.05)" } : undefined}
               >
