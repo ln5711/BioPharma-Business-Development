@@ -17,6 +17,38 @@ const trimmed = (fallback = "") =>
     z.string(),
   ).catch(fallback);
 
+/**
+ * Resolve the Postgres connection string from the first non-empty of a set of
+ * conventional names. Different hosts / storage integrations expose it under
+ * different keys — plain `DATABASE_URL`, Vercel Postgres' `POSTGRES_URL`, or a
+ * Neon/Vercel storage integration with a custom prefix (e.g. `STORAGE_`).
+ * Pooled endpoints are preferred for serverless; the *_UNPOOLED / *_NON_POOLING
+ * variants are last-resort. Add EXTRA_DATABASE_URL_ENV to point at a custom key.
+ */
+function resolveDatabaseUrl(): string {
+  const preferred = [
+    process.env.EXTRA_DATABASE_URL_ENV
+      ? process.env[process.env.EXTRA_DATABASE_URL_ENV]
+      : undefined,
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_URL,
+    process.env.POSTGRES_PRISMA_URL,
+    process.env.STORAGE_DATABASE_URL,
+    process.env.STORAGE_POSTGRES_URL,
+    process.env.STORAGE_POSTGRES_PRISMA_URL,
+  ];
+  const unpooled = [
+    process.env.DATABASE_URL_UNPOOLED,
+    process.env.POSTGRES_URL_NON_POOLING,
+    process.env.STORAGE_DATABASE_URL_UNPOOLED,
+    process.env.STORAGE_POSTGRES_URL_NON_POOLING,
+  ];
+  for (const v of [...preferred, ...unpooled]) {
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return "";
+}
+
 const schema = z.object({
   DATABASE_URL: trimmed(""),
   PGLITE_DATA_DIR: trimmed("./.pglite").transform((v) => v || "./.pglite"),
@@ -47,7 +79,7 @@ const schema = z.object({
 });
 
 const raw = {
-  DATABASE_URL: process.env.DATABASE_URL,
+  DATABASE_URL: resolveDatabaseUrl(),
   PGLITE_DATA_DIR: process.env.PGLITE_DATA_DIR,
   LLM_PROVIDER: process.env.LLM_PROVIDER,
   LLM_MODEL: process.env.LLM_MODEL,
