@@ -332,3 +332,12 @@ export const partnerScopeEnum = pgEnum("partner_scope", [
   "legacy",
   "unknown_scope",
 ]);
+
+// ─── Tasks (BD workday — next-best-action families, spec §72) ──────────────
+export const taskCategoryEnum = pgEnum("task_category", [
+  "outreach",
+  "research",
+  "follow_up",
+  "meeting_prep",
+  "admin",
+]);

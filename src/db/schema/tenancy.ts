@@ -29,7 +29,29 @@ export const users = pgTable("users", {
     .references(() => tenants.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
   name: text("name").notNull(),
+  position: text("position"), // job title / role, captured at onboarding
   role: text("role").notNull().default("member"), // member | manager | admin
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * First-run onboarding (one row per user). The presence of `completedAt` gates
+ * the welcome flow so it is shown exactly once.
+ */
+export const userOnboarding = pgTable("user_onboarding", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  position: text("position").notNull(),
+  weeklyAim: text("weekly_aim").notNull(),
+  goals: jsonb("goals").$type<string[]>().notNull().default([]),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

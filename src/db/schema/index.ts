@@ -12,4 +12,5 @@ export * from "./people";
 export * from "./signals";
 export * from "./opportunities";
 export * from "./watchlists";
+export * from "./tasks";
 export * from "./relations";
