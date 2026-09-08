@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Oncology BD Platform — design system (spec §126–§158)
+ *
+ * CLINICAL INTELLIGENCE × PREMIUM BIOTECH × MODERN ENTERPRISE × AI-NATIVE
+ *
+ * Light working canvas, deep-purple ("aubergine") navigation and accents.
+ * Purple communicates meaning; it does not coat every surface.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+@theme {
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+
+  /* Brand — deep purple family */
+  --color-plum-950: #1a0f26;
+  --color-plum-900: #241534;
+  --color-plum-800: #33204a;
+  --color-plum-700: #452c63;
+  --color-violet-600: #6d3fb0;
+  --color-violet-500: #7c4dff;
+  --color-violet-400: #9d78e8;
+  --color-lavender-300: #c4b0e8;
+  --color-lavender-100: #ede6f9;
+  --color-lavender-50: #f7f4fc;
+
+  /* Neutrals — warm off-white working canvas */
+  --color-canvas: #f8f7fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f3f1f7;
+  --color-ink-900: #1c1922;
+  --color-ink-700: #3d3646;
+  --color-ink-500: #6b6376;
+  --color-ink-400: #8b8496;
+  --color-hairline: #e7e3ee;
+
+  /* Semantic — priority & status (spec §127) */
+  --color-priority-high: #6d3fb0;
+  --color-priority-medium: #9d78e8;
+  --color-positive: #1f9d68;
+  --color-warning: #c98a12;
+  --color-critical: #cc3d4a;
+  --color-info: #5b6cd6;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+:root {
+  --bg: var(--color-canvas);
+  --fg: var(--color-ink-900);
+  --muted: var(--color-ink-500);
+  --panel: var(--color-surface);
+  --panel-2: var(--color-surface-2);
+  --hairline: var(--color-hairline);
+  --nav-bg: var(--color-plum-950);
+  --nav-fg: #d9d0ea;
+  --nav-fg-active: #ffffff;
+  --nav-active-bg: rgba(124, 77, 255, 0.16);
+  --accent: var(--color-violet-600);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #140d1e;
+  --fg: #ece7f4;
+  --muted: #9a91a9;
+  --panel: #1d1529;
+  --panel-2: #241a33;
+  --hairline: #2f2440;
+  --nav-bg: #100a18;
+  --nav-fg: #b8acce;
+  --nav-fg-active: #ffffff;
+  --nav-active-bg: rgba(124, 77, 255, 0.22);
+  --accent: var(--color-violet-400);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #140d1e;
+    --fg: #ece7f4;
+    --muted: #9a91a9;
+    --panel: #1d1529;
+    --panel-2: #241a33;
+    --hairline: #2f2440;
+    --nav-bg: #100a18;
+    --nav-fg: #b8acce;
+    --nav-fg-active: #ffffff;
+    --nav-active-bg: rgba(124, 77, 255, 0.22);
+    --accent: var(--color-violet-400);
+    color-scheme: dark;
+  }
+}
+
+* {
+  border-color: var(--hairline);
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv05", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Typographic hierarchy (spec §129) — entity names lead, metadata recedes. */
+.display-lg {
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.4rem);
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.entity-name {
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.metric-number {
+  font-size: 1.9rem;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.meta {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.hairline {
+  border-color: var(--hairline);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+}
+
+.brand-gradient {
+  background:
+    radial-gradient(120% 140% at 0% 0%, #33204a 0%, #1a0f26 55%, #140a1f 100%);
+}
+
+::selection {
+  background: rgba(124, 77, 255, 0.24);
+}
+
+/* Fast, understated motion (spec §147). */
+@media (prefers-reduced-motion: no-preference) {
+  .fade-in {
+    animation: fade-in 0.22s ease-out both;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

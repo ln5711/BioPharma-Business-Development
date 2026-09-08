@@ -1,0 +1,48 @@
+{
+  "name": "oncology-bd-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-native oncology business-development operating system — scientific event → commercial action.",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:reset": "tsx scripts/reset.ts",
+    "seed": "tsx scripts/seed.ts",
+    "ingest:ctgov": "tsx scripts/ingest-ctgov.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.43.0",
+    "next": "15.5.25",
+    "postgres": "^3.4.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@tailwindcss/postcss": "^4",
+    "drizzle-kit": "^0.31.10",
+    "dotenv": "^17.4.2",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.25",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.13",
+    "typescript": "^5"
+  }
+}
