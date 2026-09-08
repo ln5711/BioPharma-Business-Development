@@ -2,11 +2,11 @@ import Link from "next/link";
 import { getActiveTenant } from "@/lib/tenant";
 import { getDashboardCounts, getTopSignals } from "@/lib/queries";
 import { OpportunityCard } from "@/components/domain/opportunity-card";
-import { EmptyState, Stat } from "@/components/ui/primitives";
+import { EmptyState, SectionHeading, StatRail } from "@/components/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
-/** Daily BD Command Center (spec §22 / §101 / §133) — an intelligence briefing. */
+/** Daily BD command center (spec §22 / §101 / §133) — a territory briefing. */
 export default async function DashboardPage() {
   const { tenant, user } = await getActiveTenant();
   const [counts, signals] = await Promise.all([
@@ -19,56 +19,75 @@ export default async function DashboardPage() {
   const greeting =
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
+  const n = counts.meaningfulSignals;
+  const summary =
+    n === 0
+      ? "A quiet stretch — no meaningful developments detected across your monitored universe in the last seven days."
+      : counts.highPriority > 0
+        ? `${n} meaningful signal${n === 1 ? "" : "s"} in the last seven days. ${counts.highPriority} scored 70 or above and warrant a closer look.`
+        : `${n} meaningful signal${n === 1 ? "" : "s"} in the last seven days. None cleared the priority threshold yet.`;
+
   return (
     <div>
-      <header className="mb-8 rounded-[var(--radius-lg)] p-7 text-[var(--color-lavender-100)] brand-gradient">
-        <div className="eyebrow" style={{ color: "var(--color-lavender-300)" }}>
-          {tenant.name} · {new Date().toLocaleDateString(undefined, {
+      <header className="mb-9">
+        <div className="kicker">
+          {tenant.name} &nbsp;·&nbsp; Territory briefing &nbsp;·&nbsp;{" "}
+          {new Date().toLocaleDateString(undefined, {
             weekday: "long",
-            month: "long",
             day: "numeric",
+            month: "long",
           })}
         </div>
-        <h1 className="display-lg mt-2 text-white">
+        <h1 className="display-xl mt-3">
           {greeting}, {firstName}.
         </h1>
-        <p className="mt-2 max-w-xl text-[14px] leading-relaxed text-[var(--color-lavender-300)]">
-          Here&rsquo;s what changed across your oncology landscape. Every card is
-          scored deterministically and carries its source.
+        <p className="mt-3 max-w-[58ch] text-[15px] leading-relaxed text-[var(--muted)]">
+          {summary}
         </p>
 
-        <div className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
-          <Stat value={counts.meaningfulSignals} label="Meaningful signals · 7d" />
-          <Stat value={counts.highPriority} label="High-priority (≥70)" />
-          <Stat value={counts.trialChanges7d} label="Trial changes · 7d" />
-          <Stat value={counts.trialsTracked} label="Trials tracked" />
+        <div className="mt-8 border-t pt-6">
+          <StatRail
+            items={[
+              { value: counts.meaningfulSignals, label: "Signals · 7d" },
+              {
+                value: counts.highPriority,
+                label: "High priority",
+                tone: "accent",
+              },
+              { value: counts.trialChanges7d, label: "Trial changes · 7d" },
+              { value: counts.trialsTracked, label: "Trials tracked" },
+            ]}
+          />
         </div>
       </header>
 
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="eyebrow">Your priorities</h2>
-        <Link href="/signals" className="meta hover:text-[var(--fg)]">
-          View all signals →
-        </Link>
-      </div>
+      <SectionHeading
+        aside={
+          <Link href="/signals" className="hover:text-[var(--fg)]">
+            All signals →
+          </Link>
+        }
+      >
+        Today&rsquo;s priorities
+      </SectionHeading>
 
       {signals.length === 0 ? (
         <EmptyState
           title="No scored signals yet"
-          body="Run the ClinicalTrials.gov ingestion to populate the feed: `npm run ingest:ctgov`. The RAS/KRAS watchlist is seeded and ready — the job fetches matching oncology trials, snapshots them, and generates scored commercial signals."
+          body="Run the ClinicalTrials.gov ingestion to populate the feed — `npm run ingest:ctgov`. The RAS/KRAS watchlist is seeded and ready: the job fetches matching oncology trials, snapshots them, and generates scored commercial signals."
           action={
             <Link
               href="/watchlists"
-              className="rounded-md border px-3 py-1.5 text-[12.5px] font-medium"
+              className="text-[12.5px] font-medium text-[var(--accent)]"
             >
-              Review watchlists
+              Review watchlists →
             </Link>
           }
         />
       ) : (
-        <div className="flex flex-col gap-4">
-          {signals.map((s) => (
-            <OpportunityCard key={s.id} signal={s} />
+        <div className="divide-y" style={{ borderColor: "var(--hairline)" }}>
+          {signals.map((s, i) => (
+            <OpportunityCard key={s.id} signal={s} index={i + 1} />
           ))}
         </div>
       )}

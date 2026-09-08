@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { assets, organizations } from "@/db/schema";
 import { getActiveTenant } from "@/lib/tenant";
 import { EmptyState, PageHeader, Pill } from "@/components/ui/primitives";
+import { Table, Td, Th, Tr } from "@/components/ui/table";
 
 export const dynamic = "force-dynamic";
 
@@ -30,39 +31,34 @@ export default async function AssetsPage() {
           body="Assets are linked from trial interventions and the RAS seed set. Run `npm run seed` then `npm run ingest:ctgov`."
         />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="eyebrow px-4 py-2.5 font-semibold">Asset</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Company</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">MOA</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Stage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ asset, orgName }) => (
-                <tr key={asset.id} className="border-b last:border-0 hover:bg-[var(--panel-2)]">
-                  <td className="px-4 py-2.5">
-                    <span className="entity-name">{asset.canonicalName}</span>
-                    {asset.developmentCode ? (
-                      <span className="meta ml-2 font-mono text-[12px]">
-                        {asset.developmentCode}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2.5 text-[var(--muted)]">{orgName}</td>
-                  <td className="px-3 py-2.5 text-[var(--muted)]">
-                    {asset.mechanismOfAction ?? "—"}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Pill tone="neutral">{asset.stage.replace(/_/g, " ")}</Pill>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table
+          head={
+            <>
+              <Th>Asset</Th>
+              <Th>Company</Th>
+              <Th>Mechanism of action</Th>
+              <Th>Stage</Th>
+            </>
+          }
+        >
+          {rows.map(({ asset, orgName }) => (
+            <Tr key={asset.id}>
+              <Td>
+                <span className="entity-name text-[14px]">{asset.canonicalName}</span>
+                {asset.developmentCode ? (
+                  <span className="meta ml-2 font-mono text-[11.5px]">
+                    {asset.developmentCode}
+                  </span>
+                ) : null}
+              </Td>
+              <Td className="text-[var(--muted)]">{orgName}</Td>
+              <Td className="text-[var(--muted)]">{asset.mechanismOfAction ?? "—"}</Td>
+              <Td>
+                <Pill tone="neutral">{asset.stage.replace(/_/g, " ")}</Pill>
+              </Td>
+            </Tr>
+          ))}
+        </Table>
       )}
     </div>
   );

@@ -3,6 +3,8 @@ import { getDb } from "@/db";
 import { opportunities, organizations } from "@/db/schema";
 import { getActiveTenant } from "@/lib/tenant";
 import { EmptyState, PageHeader, Pill } from "@/components/ui/primitives";
+import { Table, Td, Th, Tr } from "@/components/ui/table";
+import { ConfidenceIndicator } from "@/components/domain/signal-primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -30,27 +32,38 @@ export default async function OpportunitiesPage() {
           body="Signals above the tenant threshold can be promoted to tracked opportunities with an owner, stage, timing classification and next action. This action ships with the signal review flow."
         />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-[13px]">
-            <tbody>
-              {rows.map(({ opp, orgName }) => (
-                <tr key={opp.id} className="border-b last:border-0">
-                  <td className="px-4 py-3">
-                    <div className="entity-name">{opp.title}</div>
-                    <div className="meta">{orgName}</div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <Pill tone="neutral">{opp.stage}</Pill>
-                  </td>
-                  <td className="px-3 py-3 tabular-nums font-semibold">
-                    {opp.opportunityScore}
-                  </td>
-                  <td className="px-3 py-3 meta">conf {opp.confidenceScore}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table
+          head={
+            <>
+              <Th>Opportunity</Th>
+              <Th>Stage</Th>
+              <Th>Confidence</Th>
+              <Th align="right">Score</Th>
+            </>
+          }
+        >
+          {rows.map(({ opp, orgName }) => (
+            <Tr key={opp.id}>
+              <Td>
+                <div className="entity-name text-[14px]">{opp.title}</div>
+                <div className="meta text-[12px]">{orgName}</div>
+              </Td>
+              <Td>
+                <Pill tone="neutral">{opp.stage}</Pill>
+              </Td>
+              <Td>
+                <ConfidenceIndicator confidence={opp.confidenceScore} />
+              </Td>
+              <Td
+                align="right"
+                className="tnum text-[16px]"
+                style={{ fontFamily: "var(--font-serif)" }}
+              >
+                {opp.opportunityScore}
+              </Td>
+            </Tr>
+          ))}
+        </Table>
       )}
     </div>
   );

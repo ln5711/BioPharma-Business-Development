@@ -2,100 +2,118 @@
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────
- * Oncology BD Platform — design system (spec §126–§158)
+ * Oncology BD — design system (spec §126–§158)
  *
- * CLINICAL INTELLIGENCE × PREMIUM BIOTECH × MODERN ENTERPRISE × AI-NATIVE
- *
- * Light working canvas, deep-purple ("aubergine") navigation and accents.
- * Purple communicates meaning; it does not coat every surface.
+ * A curated territory briefing, not an admin dashboard: a clean scientific
+ * journal crossed with a sleek SaaS product. Warm paper canvas, ink with a
+ * plum undertone, deep aubergine as the single brand accent, one muted teal
+ * for data and information. Source Serif 4 for headlines and figures; Inter for
+ * interface text.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 @theme {
+  --font-serif:
+    var(--font-serif-4), "Source Serif 4", "Iowan Old Style", "Charter",
+    "Georgia", "Cambria", serif;
   --font-sans:
-    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+    var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
 
-  /* Brand — deep purple family */
-  --color-plum-950: #1a0f26;
-  --color-plum-900: #241534;
+  /* Brand — deep aubergine / plum */
+  --color-plum-950: #180e21;
+  --color-plum-900: #21132e;
+  --color-plum-850: #2a1a3a;
   --color-plum-800: #33204a;
-  --color-plum-700: #452c63;
-  --color-violet-600: #6d3fb0;
-  --color-violet-500: #7c4dff;
-  --color-violet-400: #9d78e8;
-  --color-lavender-300: #c4b0e8;
-  --color-lavender-100: #ede6f9;
-  --color-lavender-50: #f7f4fc;
+  --color-plum-700: #43305e;
+  --color-violet-600: #6b3fa8;
+  --color-violet-500: #7d55c0;
+  --color-violet-400: #9b7ad6;
+  --color-lavender-300: #c3b2e0;
+  --color-lavender-100: #ece4f6;
+  --color-lavender-50: #f5f0fa;
 
-  /* Neutrals — warm off-white working canvas */
-  --color-canvas: #f8f7fa;
-  --color-surface: #ffffff;
-  --color-surface-2: #f3f1f7;
-  --color-ink-900: #1c1922;
-  --color-ink-700: #3d3646;
-  --color-ink-500: #6b6376;
-  --color-ink-400: #8b8496;
-  --color-hairline: #e7e3ee;
+  /* Secondary — muted clinical teal (data & information only) */
+  --color-teal-700: #285f5c;
+  --color-teal-600: #327470;
+  --color-teal-400: #5a9a94;
+  --color-teal-100: #dfece9;
+  --color-teal-50: #eff5f3;
 
-  /* Semantic — priority & status (spec §127) */
-  --color-priority-high: #6d3fb0;
-  --color-priority-medium: #9d78e8;
-  --color-positive: #1f9d68;
-  --color-warning: #c98a12;
-  --color-critical: #cc3d4a;
-  --color-info: #5b6cd6;
+  /* Neutrals — warm paper */
+  --color-canvas: #f6f3ec;
+  --color-paper: #fdfbf6;
+  --color-paper-2: #f1ede3;
+  --color-ink-900: #211d27;
+  --color-ink-700: #423b48;
+  --color-ink-500: #6f6672;
+  --color-ink-400: #938a95;
+  --color-hairline: #e6dfd2;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* Semantic — desaturated, sophisticated */
+  --color-priority-high: #6b3fa8;
+  --color-priority-medium: #9b7ad6;
+  --color-positive: #3a6b4f;
+  --color-warning: #97701f;
+  --color-critical: #a6454b;
+  --color-info: #327470;
+
+  --radius-sm: 3px;
+  --radius-md: 7px;
+  --radius-lg: 11px;
 }
 
 :root {
   --bg: var(--color-canvas);
   --fg: var(--color-ink-900);
   --muted: var(--color-ink-500);
-  --panel: var(--color-surface);
-  --panel-2: var(--color-surface-2);
+  --faint: var(--color-ink-400);
+  --panel: var(--color-paper);
+  --panel-2: var(--color-paper-2);
   --hairline: var(--color-hairline);
   --nav-bg: var(--color-plum-950);
-  --nav-fg: #d9d0ea;
+  --nav-fg: #cabfdc;
   --nav-fg-active: #ffffff;
-  --nav-active-bg: rgba(124, 77, 255, 0.16);
+  --nav-marker: var(--color-violet-400);
   --accent: var(--color-violet-600);
+  --accent-2: var(--color-teal-600);
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --bg: #140d1e;
-  --fg: #ece7f4;
-  --muted: #9a91a9;
-  --panel: #1d1529;
-  --panel-2: #241a33;
-  --hairline: #2f2440;
-  --nav-bg: #100a18;
-  --nav-fg: #b8acce;
+  --bg: #161019;
+  --fg: #ece6f2;
+  --muted: #9c92a6;
+  --faint: #6f6579;
+  --panel: #1e1723;
+  --panel-2: #251d2c;
+  --hairline: #322838;
+  --nav-bg: #100b16;
+  --nav-fg: #b3a7c4;
   --nav-fg-active: #ffffff;
-  --nav-active-bg: rgba(124, 77, 255, 0.22);
+  --nav-marker: var(--color-violet-400);
   --accent: var(--color-violet-400);
+  --accent-2: var(--color-teal-400);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #140d1e;
-    --fg: #ece7f4;
-    --muted: #9a91a9;
-    --panel: #1d1529;
-    --panel-2: #241a33;
-    --hairline: #2f2440;
-    --nav-bg: #100a18;
-    --nav-fg: #b8acce;
+    --bg: #161019;
+    --fg: #ece6f2;
+    --muted: #9c92a6;
+    --faint: #6f6579;
+    --panel: #1e1723;
+    --panel-2: #251d2c;
+    --hairline: #322838;
+    --nav-bg: #100b16;
+    --nav-fg: #b3a7c4;
     --nav-fg-active: #ffffff;
-    --nav-active-bg: rgba(124, 77, 255, 0.22);
+    --nav-marker: var(--color-violet-400);
     --accent: var(--color-violet-400);
+    --accent-2: var(--color-teal-400);
     color-scheme: dark;
   }
 }
@@ -114,69 +132,113 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-feature-settings: "cv05", "ss01";
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Typographic hierarchy (spec §129) — entity names lead, metadata recedes. */
+/* ── Typographic system (spec §129) ─────────────────────────────────────────
+   Entity names and figures lead in the serif; metadata recedes in the sans. */
+
+.display-xl {
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 2.85rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.08;
+}
 .display-lg {
-  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.4rem);
-  font-weight: 640;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  font-family: var(--font-serif);
+  font-size: clamp(1.5rem, 1.15rem + 1.6vw, 2.05rem);
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  line-height: 1.12;
+}
+.display-md {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  font-weight: 500;
+  letter-spacing: -0.008em;
+  line-height: 1.2;
 }
 .entity-name {
-  font-weight: 620;
-  letter-spacing: -0.01em;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.kicker {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
 }
 .eyebrow {
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--faint);
 }
 .metric-number {
-  font-size: 1.9rem;
-  font-weight: 640;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-serif);
+  font-size: 1.65rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .meta {
   color: var(--muted);
   font-size: 0.8125rem;
+  line-height: 1.55;
+}
+.prose-tight {
+  font-size: 0.875rem;
+  line-height: 1.62;
+}
+.prose-tight em {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+.tnum {
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
-.hairline {
-  border-color: var(--hairline);
-}
+/* ── Surfaces ──────────────────────────────────────────────────────────────── */
 
 .card {
   background: var(--panel);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
 }
+.rule {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+}
+.hairline {
+  border-color: var(--hairline);
+}
 
+/* Reserved for the login / marketing hero only — never the working interface. */
 .brand-gradient {
   background:
-    radial-gradient(120% 140% at 0% 0%, #33204a 0%, #1a0f26 55%, #140a1f 100%);
+    radial-gradient(130% 150% at 0% 0%, #2a1a3a 0%, #180e21 58%, #130a1c 100%);
 }
 
 ::selection {
-  background: rgba(124, 77, 255, 0.24);
+  background: color-mix(in oklab, var(--accent) 26%, transparent);
 }
 
-/* Fast, understated motion (spec §147). */
+/* ── Motion — fast, understated, state-communicating (spec §147) ───────────── */
 @media (prefers-reduced-motion: no-preference) {
   .fade-in {
-    animation: fade-in 0.22s ease-out both;
+    animation: fade-in 0.2s ease-out both;
   }
 }
 @keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(3px);
+    transform: translateY(2px);
   }
   to {
     opacity: 1;

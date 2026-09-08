@@ -4,13 +4,14 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { commercialSignals, organizations, trials } from "@/db/schema";
 import { getActiveTenant } from "@/lib/tenant";
-import { Card, EmptyState, Pill } from "@/components/ui/primitives";
+import { EmptyState, Pill, SectionHeading, StatRail } from "@/components/ui/primitives";
+import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { OpportunityCard } from "@/components/domain/opportunity-card";
 import type { SignalRow } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-/** Bloomberg-style account intelligence profile (spec §20 / §139). */
+/** Company intelligence profile (spec §20 / §139). */
 export default async function AccountPage({
   params,
 }: {
@@ -50,92 +51,95 @@ export default async function AccountPage({
   const topScore = signals[0]?.opportunityScore ?? 0;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <Link href="/accounts" className="meta hover:text-[var(--fg)]">
-          ← Accounts
-        </Link>
-        <div className="mt-2 flex items-start justify-between gap-6">
+    <div>
+      <Link href="/accounts" className="meta hover:text-[var(--fg)]">
+        ← Accounts
+      </Link>
+
+      <header className="mt-3 border-b pb-6">
+        <div className="flex items-start justify-between gap-8">
           <div>
-            <h1 className="display-lg text-[28px]">{org.canonicalName}</h1>
-            <p className="meta mt-1 capitalize">
+            <div className="eyebrow mb-2 capitalize">
               {org.organizationType}
               {org.headquarters ? ` · ${org.headquarters}` : ""}
-            </p>
+            </div>
+            <h1 className="display-lg">{org.canonicalName}</h1>
           </div>
-          <button className="rounded-md border px-3 py-1.5 text-[12.5px] font-medium">
+          <button
+            className="shrink-0 rounded-[var(--radius-sm)] border px-3 py-1.5 text-[12px] font-medium text-[var(--muted)] hover:text-[var(--fg)]"
+            style={{ borderColor: "var(--hairline)" }}
+          >
             Follow account
           </button>
         </div>
-      </div>
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        <Card className="p-4">
-          <div className="eyebrow">Account opportunity</div>
-          <div className="metric-number mt-1 text-[22px]">{topScore}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="eyebrow">Relationship</div>
-          <div className="mt-1 text-[15px] font-medium">Not established</div>
-        </Card>
-        <Card className="p-4">
-          <div className="eyebrow">Active signals</div>
-          <div className="metric-number mt-1 text-[22px]">{signals.length}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="eyebrow">Trials as sponsor</div>
-          <div className="metric-number mt-1 text-[22px]">{orgTrials.length}</div>
-        </Card>
-      </div>
+        <div className="mt-6">
+          <StatRail
+            items={[
+              { value: topScore, label: "Account opportunity", tone: "accent" },
+              { value: "Not established", label: "Relationship" },
+              { value: signals.length, label: "Active signals" },
+              { value: orgTrials.length, label: "Trials as sponsor" },
+            ]}
+          />
+        </div>
+      </header>
 
-      <section>
-        <h2 className="eyebrow mb-3">Why this account matters</h2>
+      <div className="mt-8">
+        <SectionHeading>Why this account matters</SectionHeading>
         {signals.length === 0 ? (
           <EmptyState
             title="No commercial signals for this account"
             body="No meaningful oncology developments have been detected for this company in the monitored period. It stays on the watchlist for trial, publication and leadership changes."
           />
         ) : (
-          <div className="flex flex-col gap-4">
-            {signals.slice(0, 5).map((s) => (
-              <OpportunityCard key={s.id} signal={s} />
+          <div className="divide-y" style={{ borderColor: "var(--hairline)" }}>
+            {signals.slice(0, 5).map((s, i) => (
+              <OpportunityCard key={s.id} signal={s} index={i + 1} />
             ))}
           </div>
         )}
-      </section>
+      </div>
 
       {orgTrials.length ? (
-        <section>
-          <h2 className="eyebrow mb-3">Trials</h2>
-          <div className="card overflow-hidden">
-            <table className="w-full text-[13px]">
-              <tbody>
-                {orgTrials.map((t) => (
-                  <tr key={t.id} className="border-b last:border-0 hover:bg-[var(--panel-2)]">
-                    <td className="px-4 py-2.5">
-                      <Link
-                        href={`/trials/${t.nctId}`}
-                        className="font-mono text-[12px] text-[var(--accent)]"
-                      >
-                        {t.nctId}
-                      </Link>
-                      <div className="line-clamp-1 max-w-[420px] text-[13px]">
-                        {t.title}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-[var(--muted)]">
-                      {t.phase.replace(/_/g, " ")}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {t.molecularEligibility ? <Pill tone="high">mol. elig.</Pill> : null}
-                      {t.ctdnaMentions ? <Pill tone="info">ctDNA</Pill> : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <div className="mt-10">
+          <SectionHeading>Trials</SectionHeading>
+          <Table
+            head={
+              <>
+                <Th>Trial</Th>
+                <Th>Phase</Th>
+                <Th>Testing language</Th>
+              </>
+            }
+          >
+            {orgTrials.map((t) => (
+              <Tr key={t.id}>
+                <Td>
+                  <Link
+                    href={`/trials/${t.nctId}`}
+                    className="font-mono text-[11.5px] text-[var(--accent)]"
+                  >
+                    {t.nctId}
+                  </Link>
+                  <div className="entity-name mt-0.5 line-clamp-1 max-w-[440px] text-[13.5px]">
+                    {t.title}
+                  </div>
+                </Td>
+                <Td className="text-[var(--muted)]">{t.phase.replace(/_/g, " ")}</Td>
+                <Td>
+                  <div className="flex flex-wrap gap-1">
+                    {t.molecularEligibility ? <Pill tone="high">mol. elig.</Pill> : null}
+                    {t.ctdnaMentions ? <Pill tone="info">ctDNA</Pill> : null}
+                    {!t.molecularEligibility && !t.ctdnaMentions ? (
+                      <span className="meta">—</span>
+                    ) : null}
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+          </Table>
+        </div>
       ) : null}
     </div>
   );

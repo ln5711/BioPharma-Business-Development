@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getActiveTenant } from "@/lib/tenant";
 import { listTrials } from "@/lib/queries";
 import { EmptyState, PageHeader, Pill } from "@/components/ui/primitives";
+import { Table, Td, Th, Tr } from "@/components/ui/table";
 import { formatRelativeDays } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export default async function TrialsPage() {
       <PageHeader
         eyebrow="Clinical trials"
         title="Trials"
-        description="Every trial is snapshotted and diffed on each refresh. Flags below are derived deterministically from the public record — molecular eligibility, ctDNA/MRD/NGS language, serial sampling."
+        description="Every trial is snapshotted and diffed on each refresh. The flags are derived deterministically from the public record — molecular eligibility, ctDNA / MRD / NGS language, serial sampling."
       />
 
       {rows.length === 0 ? (
@@ -36,66 +37,66 @@ export default async function TrialsPage() {
           body="Run `npm run ingest:ctgov` to fetch the seeded RAS/KRAS watchlist from ClinicalTrials.gov API v2."
         />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="eyebrow px-4 py-2.5 font-semibold">Trial</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Sponsor</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Phase</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Status</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Enroll.</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Signals in record</th>
-                <th className="eyebrow px-3 py-2.5 font-semibold">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((t) => (
-                <tr key={t.id} className="border-b last:border-0 hover:bg-[var(--panel-2)]">
-                  <td className="px-4 py-2.5">
-                    <Link
-                      href={`/trials/${t.nctId}`}
-                      className="font-mono text-[12px] text-[var(--accent)]"
-                    >
-                      {t.nctId}
-                    </Link>
-                    <div className="entity-name mt-0.5 line-clamp-1 max-w-[320px] text-[13px]">
-                      {t.title}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-[var(--muted)]">
-                    <span className="line-clamp-1 max-w-[160px]">{t.sponsorName}</span>
-                  </td>
-                  <td className="px-3 py-2.5 font-medium">{PHASE_LABEL[t.phase] ?? t.phase}</td>
-                  <td className="px-3 py-2.5">
-                    <span className="text-[12px] text-[var(--muted)]">
-                      {t.status.replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 tabular-nums">{t.enrollment ?? "—"}</td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex flex-wrap gap-1">
-                      {t.molecularEligibility ? <Pill tone="high">mol. elig.</Pill> : null}
-                      {t.ctdnaMentions ? <Pill tone="info">ctDNA</Pill> : null}
-                      {t.mrdMentions ? <Pill tone="info">MRD</Pill> : null}
-                      {t.ngsMentions ? <Pill tone="neutral">NGS</Pill> : null}
-                      {t.serialSamplingMentions ? <Pill tone="neutral">serial</Pill> : null}
-                      {!t.molecularEligibility &&
-                      !t.ctdnaMentions &&
-                      !t.mrdMentions &&
-                      !t.ngsMentions ? (
-                        <span className="meta">—</span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-[var(--muted)]">
-                    {formatRelativeDays(t.lastCtgovUpdate)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table
+          head={
+            <>
+              <Th>Trial</Th>
+              <Th>Sponsor</Th>
+              <Th>Phase</Th>
+              <Th>Status</Th>
+              <Th align="right">Enroll.</Th>
+              <Th>Testing language</Th>
+              <Th align="right">Updated</Th>
+            </>
+          }
+        >
+          {rows.map((t) => (
+            <Tr key={t.id}>
+              <Td>
+                <Link
+                  href={`/trials/${t.nctId}`}
+                  className="font-mono text-[11.5px] text-[var(--accent)]"
+                >
+                  {t.nctId}
+                </Link>
+                <div className="entity-name mt-0.5 line-clamp-2 max-w-[340px] text-[13.5px] leading-snug">
+                  {t.title}
+                </div>
+              </Td>
+              <Td className="text-[var(--muted)]">
+                <span className="line-clamp-2 max-w-[160px]">{t.sponsorName}</span>
+              </Td>
+              <Td className="font-medium">{PHASE_LABEL[t.phase] ?? t.phase}</Td>
+              <Td>
+                <span className="text-[12px] text-[var(--muted)]">
+                  {t.status.replace(/_/g, " ")}
+                </span>
+              </Td>
+              <Td align="right" className="tnum">
+                {t.enrollment ?? "—"}
+              </Td>
+              <Td>
+                <div className="flex flex-wrap gap-1">
+                  {t.molecularEligibility ? <Pill tone="high">mol. elig.</Pill> : null}
+                  {t.ctdnaMentions ? <Pill tone="info">ctDNA</Pill> : null}
+                  {t.mrdMentions ? <Pill tone="info">MRD</Pill> : null}
+                  {t.ngsMentions ? <Pill tone="neutral">NGS</Pill> : null}
+                  {t.serialSamplingMentions ? <Pill tone="neutral">serial</Pill> : null}
+                  {!t.molecularEligibility &&
+                  !t.ctdnaMentions &&
+                  !t.mrdMentions &&
+                  !t.ngsMentions &&
+                  !t.serialSamplingMentions ? (
+                    <span className="meta">—</span>
+                  ) : null}
+                </div>
+              </Td>
+              <Td align="right" className="text-[var(--muted)]">
+                {formatRelativeDays(t.lastCtgovUpdate)}
+              </Td>
+            </Tr>
+          ))}
+        </Table>
       )}
     </div>
   );

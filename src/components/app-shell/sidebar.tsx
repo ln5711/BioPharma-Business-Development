@@ -6,27 +6,30 @@ import { Settings, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PRIMARY_NAV } from "./nav";
 
-/** Deep-plum left rail with a subtle elevated violet active state (spec §131). */
+/**
+ * Deep-plum left rail. Active state is a quiet left marker + brightened label,
+ * not a filled pill (spec §131 / §154 — restraint over chrome).
+ */
 export function Sidebar() {
   const pathname = usePathname();
 
   return (
     <aside
-      className="flex h-dvh w-[236px] shrink-0 flex-col justify-between px-3 py-5"
+      className="flex h-dvh w-[224px] shrink-0 flex-col justify-between px-3 py-6"
       style={{ background: "var(--nav-bg)", color: "var(--nav-fg)" }}
     >
       <div>
-        <Link href="/" className="mb-6 flex items-center gap-2.5 px-2">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--color-violet-600)] text-[13px] font-bold text-white">
-            O
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight text-white">
+        <Link href="/" className="mb-8 flex items-baseline gap-2 px-3">
+          <span
+            className="text-[17px] font-medium tracking-tight text-white"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
             Oncology BD
           </span>
         </Link>
 
-        <nav className="flex flex-col gap-0.5">
-          {PRIMARY_NAV.map((item) => {
+        <nav className="flex flex-col gap-px">
+          {PRIMARY_NAV.map((item, i) => {
             const active =
               item.href === "/"
                 ? pathname === "/"
@@ -36,21 +39,26 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-2.5 py-[7px] text-[13.5px] transition-colors",
-                  active
-                    ? "font-medium"
-                    : "hover:bg-white/5",
+                  "group relative flex items-center gap-3 rounded-[var(--radius-sm)] py-[7px] pl-3 pr-2.5 text-[13px] transition-colors",
+                  active ? "text-white" : "hover:bg-white/[0.04]",
+                  i === 1 || i === 6 || i === 10 ? "mt-2" : "",
                 )}
-                style={
-                  active
-                    ? {
-                        background: "var(--nav-active-bg)",
-                        color: "var(--nav-fg-active)",
-                      }
-                    : undefined
-                }
+                style={active ? { background: "rgba(255,255,255,0.05)" } : undefined}
               >
-                <item.icon size={16} strokeWidth={1.75} className="shrink-0 opacity-90" />
+                {active ? (
+                  <span
+                    className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full"
+                    style={{ background: "var(--nav-marker)" }}
+                  />
+                ) : null}
+                <item.icon
+                  size={15}
+                  strokeWidth={1.75}
+                  className={cn(
+                    "shrink-0 transition-opacity",
+                    active ? "opacity-100" : "opacity-70 group-hover:opacity-100",
+                  )}
+                />
                 {item.label}
               </Link>
             );
@@ -58,19 +66,19 @@ export function Sidebar() {
         </nav>
       </div>
 
-      <div className="flex flex-col gap-0.5 border-t border-white/10 pt-3">
+      <div className="flex flex-col gap-px border-t border-white/[0.07] pt-4">
         <Link
           href="/settings"
-          className="flex items-center gap-3 rounded-md px-2.5 py-[7px] text-[13.5px] hover:bg-white/5"
+          className="flex items-center gap-3 rounded-[var(--radius-sm)] py-[7px] pl-3 pr-2.5 text-[13px] hover:bg-white/[0.04]"
         >
-          <Settings size={16} strokeWidth={1.75} className="opacity-90" />
+          <Settings size={15} strokeWidth={1.75} className="opacity-70" />
           Settings
         </Link>
-        <div className="flex items-center gap-3 rounded-md px-2.5 py-[7px] text-[13.5px]">
-          <span className="grid h-6 w-6 place-items-center rounded-full bg-white/10">
-            <UserRound size={14} strokeWidth={1.75} />
+        <div className="mt-1 flex items-center gap-2.5 px-3 py-1.5 text-[13px]">
+          <span className="grid h-6 w-6 place-items-center rounded-full bg-white/[0.08]">
+            <UserRound size={13} strokeWidth={1.75} />
           </span>
-          <span className="truncate">Luciann Nguyen</span>
+          <span className="truncate text-white/85">Luciann Nguyen</span>
         </div>
       </div>
     </aside>
