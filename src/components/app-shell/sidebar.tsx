@@ -21,10 +21,10 @@ export function Sidebar() {
       <div>
         <Link href="/" className="mb-8 flex items-baseline gap-2 px-3">
           <span
-            className="text-[17px] font-medium tracking-tight text-white"
+            className="text-[18px] font-medium lowercase tracking-tight text-white"
             style={{ fontFamily: "var(--font-serif)" }}
           >
-            Oncology BD
+            newwin
           </span>
         </Link>
 

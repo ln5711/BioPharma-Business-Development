@@ -18,7 +18,7 @@ const serif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "Oncology BD",
+  title: "newwin",
   description:
     "AI-native oncology business-development operating system — turn scientific change into commercial action.",
 };

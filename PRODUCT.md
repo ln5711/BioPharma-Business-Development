@@ -115,15 +115,17 @@ architecture supports any pathway or indication.
 
 ## Brand Commitments
 
-- **Name:** *Oncology BD* (the working name; "Oncology BD Platform" is the
-  acceptable long form). Not yet a registered brand.
-- **Deep-purple brand system is binding.** A deep aubergine / dark plum /
-  black-purple family used *selectively*: neutral working surfaces with
-  deep-purple navigation, accents, selected states, data-visualization
-  highlights, and subtle gradients — not every surface purple, no rainbow
-  coloring. Color communicates meaning (priority and status). Primary theme is a
-  light working canvas with dark-plum navigation; a dark mode is also supported
-  (plum-black canvas, no pure black).
+- **Name:** *newwin* — always lowercase, set in the serif wordmark. Not yet a
+  registered brand.
+- **Deep-cobalt brand system is binding.** A deep, lightly desaturated
+  cobalt / navy used *selectively*: neutral working surfaces with deep-blue
+  navigation, accents, selected states, data-visualization highlights, and
+  subtle gradients — not every surface blue, no rainbow coloring, and a clean
+  editorial blue rather than a bright generic one. One muted clinical teal is
+  reserved for data and informational cues. Color communicates meaning
+  (priority and status). Primary theme is a light warm-paper canvas with
+  dark-navy navigation; a dark mode is also supported (navy-ink canvas, no pure
+  black).
 - **Personality:** intelligent, calm, precise, premium, scientific, fast,
   trustworthy, minimal, sophisticated, modern. Never cartoonish, neon,
   cyberpunk, crypto-like, consumer-focused, chatbot-forward, Salesforce-like, or

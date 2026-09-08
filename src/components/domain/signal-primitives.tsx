@@ -17,12 +17,12 @@ export function SignalBadge({ signalType }: { signalType: string }) {
 
 function categoryColor(category: string): string {
   const map: Record<string, string> = {
-    clinical_trial: "var(--color-violet-500)",
+    clinical_trial: "var(--color-blue-500)",
     publication: "var(--color-teal-600)",
     regulatory: "var(--color-warning)",
     corporate: "var(--color-ink-400)",
-    leadership: "var(--color-lavender-300)",
-    conference: "var(--color-violet-400)",
+    leadership: "var(--color-sky-300)",
+    conference: "var(--color-blue-400)",
     partnership: "var(--color-positive)",
     relationship: "var(--color-priority-medium)",
     crm: "var(--color-ink-400)",

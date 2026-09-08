@@ -47,7 +47,7 @@ DATABASE_URL=postgres://…  npm run seed`}
       <button
         onClick={reset}
         className="mt-6 rounded-md px-3 py-1.5 text-[13px] font-medium text-white"
-        style={{ background: "var(--color-violet-600)" }}
+        style={{ background: "var(--color-blue-600)" }}
       >
         Try again
       </button>

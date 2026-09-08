@@ -1,8 +1,8 @@
-# Oncology BD Platform
+# newwin
 
-An AI-native **oncology business-development operating system**. Not a CRM, not an
-AI email generator, not a news aggregator — a system that answers one question
-continuously:
+An AI-native **oncology business-development operating system** (product name:
+_newwin_, always lowercase). Not a CRM, not an AI email generator, not a news
+aggregator — a system that answers one question continuously:
 
 > Based on what changed in oncology, **who** should our BD team contact today,
 > **why now**, **what** should we say, and **what** happens next?

@@ -66,8 +66,8 @@ const schema = z.object({
   CLINICALTRIALS_BASE_URL: trimmed("https://clinicaltrials.gov/api/v2").transform(
     (v) => v || "https://clinicaltrials.gov/api/v2",
   ),
-  CLINICALTRIALS_USER_AGENT: trimmed("oncology-bd-platform/0.1").transform(
-    (v) => v || "oncology-bd-platform/0.1",
+  CLINICALTRIALS_USER_AGENT: trimmed("newwin/0.1").transform(
+    (v) => v || "newwin/0.1",
   ),
 
   NCBI_API_KEY: trimmed(""),

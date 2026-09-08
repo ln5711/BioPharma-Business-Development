@@ -2,13 +2,13 @@
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────
- * Oncology BD — design system (spec §126–§158)
+ * newwin — design system (spec §126–§158)
  *
  * A curated territory briefing, not an admin dashboard: a clean scientific
- * journal crossed with a sleek SaaS product. Warm paper canvas, ink with a
- * plum undertone, deep aubergine as the single brand accent, one muted teal
- * for data and information. Source Serif 4 for headlines and figures; Inter for
- * interface text.
+ * journal crossed with a sleek SaaS product. Warm paper canvas, a deep,
+ * lightly desaturated cobalt as the single brand accent, one muted clinical
+ * teal for data and information. Source Serif 4 for headlines and figures;
+ * Inter for interface text.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -22,18 +22,18 @@
   --font-mono:
     ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
 
-  /* Brand — deep aubergine / plum */
-  --color-plum-950: #180e21;
-  --color-plum-900: #21132e;
-  --color-plum-850: #2a1a3a;
-  --color-plum-800: #33204a;
-  --color-plum-700: #43305e;
-  --color-violet-600: #6b3fa8;
-  --color-violet-500: #7d55c0;
-  --color-violet-400: #9b7ad6;
-  --color-lavender-300: #c3b2e0;
-  --color-lavender-100: #ece4f6;
-  --color-lavender-50: #f5f0fa;
+  /* Brand — deep cobalt / navy (lightly desaturated, editorial not neon) */
+  --color-navy-950: #0c1526;
+  --color-navy-900: #0f1c33;
+  --color-navy-850: #13243f;
+  --color-navy-800: #17335c;
+  --color-navy-700: #1e4785;
+  --color-blue-600: #275ba6;
+  --color-blue-500: #3f74c0;
+  --color-blue-400: #7aa0d8;
+  --color-sky-300: #b3caea;
+  --color-sky-100: #dde8f6;
+  --color-sky-50: #eef4fb;
 
   /* Secondary — muted clinical teal (data & information only) */
   --color-teal-700: #285f5c;
@@ -53,8 +53,8 @@
   --color-hairline: #e6dfd2;
 
   /* Semantic — desaturated, sophisticated */
-  --color-priority-high: #6b3fa8;
-  --color-priority-medium: #9b7ad6;
+  --color-priority-high: #1e4785;
+  --color-priority-medium: #7aa0d8;
   --color-positive: #3a6b4f;
   --color-warning: #97701f;
   --color-critical: #a6454b;
@@ -73,46 +73,46 @@
   --panel: var(--color-paper);
   --panel-2: var(--color-paper-2);
   --hairline: var(--color-hairline);
-  --nav-bg: var(--color-plum-950);
-  --nav-fg: #cabfdc;
+  --nav-bg: var(--color-navy-950);
+  --nav-fg: #b9c6dc;
   --nav-fg-active: #ffffff;
-  --nav-marker: var(--color-violet-400);
-  --accent: var(--color-violet-600);
+  --nav-marker: var(--color-blue-400);
+  --accent: var(--color-blue-600);
   --accent-2: var(--color-teal-600);
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --bg: #161019;
-  --fg: #ece6f2;
-  --muted: #9c92a6;
-  --faint: #6f6579;
-  --panel: #1e1723;
-  --panel-2: #251d2c;
-  --hairline: #322838;
-  --nav-bg: #100b16;
-  --nav-fg: #b3a7c4;
+  --bg: #10141c;
+  --fg: #e7ebf3;
+  --muted: #939cad;
+  --faint: #656d7d;
+  --panel: #171d28;
+  --panel-2: #1e2530;
+  --hairline: #2b3340;
+  --nav-bg: #0a0f18;
+  --nav-fg: #a6b2c6;
   --nav-fg-active: #ffffff;
-  --nav-marker: var(--color-violet-400);
-  --accent: var(--color-violet-400);
+  --nav-marker: var(--color-blue-400);
+  --accent: var(--color-blue-400);
   --accent-2: var(--color-teal-400);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #161019;
-    --fg: #ece6f2;
-    --muted: #9c92a6;
-    --faint: #6f6579;
-    --panel: #1e1723;
-    --panel-2: #251d2c;
-    --hairline: #322838;
-    --nav-bg: #100b16;
-    --nav-fg: #b3a7c4;
+    --bg: #10141c;
+    --fg: #e7ebf3;
+    --muted: #939cad;
+    --faint: #656d7d;
+    --panel: #171d28;
+    --panel-2: #1e2530;
+    --hairline: #2b3340;
+    --nav-bg: #0a0f18;
+    --nav-fg: #a6b2c6;
     --nav-fg-active: #ffffff;
-    --nav-marker: var(--color-violet-400);
-    --accent: var(--color-violet-400);
+    --nav-marker: var(--color-blue-400);
+    --accent: var(--color-blue-400);
     --accent-2: var(--color-teal-400);
     color-scheme: dark;
   }
@@ -222,7 +222,7 @@ body {
 /* Reserved for the login / marketing hero only — never the working interface. */
 .brand-gradient {
   background:
-    radial-gradient(130% 150% at 0% 0%, #2a1a3a 0%, #180e21 58%, #130a1c 100%);
+    radial-gradient(130% 150% at 0% 0%, #17335c 0%, #0f1c33 58%, #0a1120 100%);
 }
 
 ::selection {
