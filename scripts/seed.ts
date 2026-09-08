@@ -287,7 +287,9 @@ async function main() {
   console.log("\n✔ seed complete. Next: `npm run ingest:ctgov`");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0)) // the postgres-js pool keeps the event loop alive otherwise
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
