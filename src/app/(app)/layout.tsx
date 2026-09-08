@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getOnboardingStatus } from "@/lib/onboarding";
-import { Sidebar } from "@/components/app-shell/sidebar";
-import { Topbar } from "@/components/app-shell/topbar";
+import { TopNav } from "@/components/app-shell/top-nav";
 
 export default async function AppLayout({
   children,
@@ -13,14 +12,11 @@ export default async function AppLayout({
   if (needsOnboarding) redirect("/welcome");
 
   return (
-    <div className="flex h-dvh overflow-hidden">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar />
-        <main className="min-h-0 flex-1 overflow-y-auto px-8 py-10 sm:px-12 lg:px-16">
-          <div className="mx-auto max-w-[980px]">{children}</div>
-        </main>
-      </div>
+    <div className="flex min-h-dvh flex-col">
+      <TopNav />
+      <main className="flex-1 px-6 py-10 sm:px-10 lg:px-14">
+        <div className="mx-auto max-w-[1040px]">{children}</div>
+      </main>
     </div>
   );
 }
