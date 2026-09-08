@@ -234,6 +234,12 @@ body {
   .fade-in {
     animation: fade-in 0.2s ease-out both;
   }
+  .fade-slide-in {
+    animation: fade-slide-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .fade-slide-up {
+    animation: fade-slide-up 0.45s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
 }
 @keyframes fade-in {
   from {
@@ -243,5 +249,25 @@ body {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-slide-up {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-14px);
   }
 }

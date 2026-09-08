@@ -1,7 +1,17 @@
+import { redirect } from "next/navigation";
+import { getOnboardingStatus } from "@/lib/onboarding";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { Topbar } from "@/components/app-shell/topbar";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // First-run gate — one animated welcome + onboarding form, then never again.
+  const { needsOnboarding } = await getOnboardingStatus();
+  if (needsOnboarding) redirect("/welcome");
+
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar />
