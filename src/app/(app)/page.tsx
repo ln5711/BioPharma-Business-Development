@@ -29,8 +29,12 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <header className="mb-9">
-        <div className="kicker">
+      <header className="aura-panel mb-9">
+        <div className="kicker flex items-center gap-1.5">
+          <span
+            className="h-[5px] w-[5px] rounded-full"
+            style={{ background: "var(--accent)" }}
+          />
           {tenant.name} &nbsp;·&nbsp; Territory briefing &nbsp;·&nbsp;{" "}
           {new Date().toLocaleDateString(undefined, {
             weekday: "long",

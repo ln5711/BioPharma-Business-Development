@@ -33,7 +33,7 @@ export function TopNav() {
       <Link
         href="/"
         className="shrink-0 text-[17px] font-medium lowercase tracking-tight"
-        style={{ fontFamily: "var(--font-serif)" }}
+        style={{ fontFamily: "var(--font-display)" }}
       >
         newwin
       </Link>
