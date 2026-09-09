@@ -17,7 +17,8 @@
     "ingest:ctgov": "tsx scripts/ingest-ctgov.ts",
     "db:migrate:status": "tsx scripts/migrate-status.ts",
     "test": "TSX_TSCONFIG_PATH=tests/tsconfig.json node --import tsx --test tests/**/*.test.ts",
-    "db:backfill:dates": "tsx scripts/backfill-trial-dates.ts"
+    "db:backfill:dates": "tsx scripts/backfill-trial-dates.ts",
+    "verify:anthropic": "tsx scripts/verify-anthropic.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
