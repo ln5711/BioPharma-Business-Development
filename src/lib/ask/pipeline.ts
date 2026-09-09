@@ -138,6 +138,54 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
       sourceLabel: "ClinicalTrials.gov",
     }));
     if (!full.length) noResultsExplanation = "I couldn't find those trials in your workspace to compare.";
+  } else if (intent.intent === "draft_outreach") {
+    // Resolve which record the draft is about: an ordinal into the previous
+    // results, an explicit NCT id, or the page context.
+    let target: { label: string; href: string } | null = null;
+    if (intent.refersToPreviousResult && input.previousCards?.length) {
+      const card = input.previousCards[intent.refersToPreviousResult - 1];
+      if (card) {
+        const nct = card.href.match(/\/trials\/(NCT\d{8})/i)?.[1];
+        const sig = card.href.match(/[?&]signal=([0-9a-f-]{36})/i)?.[1];
+        target = nct
+          ? { label: card.title, href: `/outreach?trial=${nct.toUpperCase()}` }
+          : sig
+            ? { label: card.title, href: `/outreach?signal=${sig}` }
+            : { label: card.title, href: card.href };
+      }
+    }
+    if (!target && intent.nctIds[0]) {
+      target = { label: intent.nctIds[0], href: `/outreach?trial=${intent.nctIds[0]}` };
+    }
+    if (!target && input.page.contextNctId) {
+      target = { label: input.page.contextNctId, href: `/outreach?trial=${input.page.contextNctId}` };
+    }
+    if (!target && input.page.contextCompany) {
+      target = {
+        label: input.page.contextCompany.name,
+        href: `/outreach?account=${input.page.contextCompany.id}`,
+      };
+    }
+    retrieval.push({ tool: "draft_outreach", count: target ? 1 : 0 });
+    if (target) {
+      evidence = [
+        {
+          kind: "trial",
+          id: target.label,
+          title: `Compose outreach about ${target.label}`,
+          summary: "Opens the composer with this record as grounding evidence.",
+          eventDate: null,
+          importedAt: null,
+          eventDateKind: null,
+          recordUrl: target.href,
+          sourceUrl: null,
+          sourceLabel: null,
+        },
+      ];
+    } else {
+      noResultsExplanation =
+        "Tell me which result to draft about — e.g. \"draft outreach about the first result\" or name the trial.";
+    }
   } else {
     // keyword_search
     const term = intent.companies[0] ?? intent.biomarkers[0] ?? intent.indications[0] ?? input.query;

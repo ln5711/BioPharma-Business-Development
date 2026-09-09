@@ -15,4 +15,5 @@ export * from "./watchlists";
 export * from "./tasks";
 export * from "./workspaces";
 export * from "./ask";
+export * from "./outreach";
 export * from "./relations";
