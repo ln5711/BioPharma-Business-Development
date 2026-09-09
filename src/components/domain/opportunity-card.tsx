@@ -34,7 +34,7 @@ export function OpportunityCard({
       <div
         aria-hidden
         className="tnum hidden pt-1 text-right text-[13px] sm:block"
-        style={{ fontFamily: "var(--font-display)", color: "var(--faint)" }}
+        style={{ fontFamily: "var(--font-serif)", color: "var(--faint)" }}
       >
         {index != null ? String(index).padStart(2, "0") : ""}
       </div>

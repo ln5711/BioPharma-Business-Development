@@ -46,7 +46,7 @@ export function WelcomeFlow({ initialName }: { initialName: string }) {
           <h1
             className="mt-3 text-center lowercase"
             style={{
-              fontFamily: "var(--font-display)",
+              fontFamily: "var(--font-serif)",
               fontSize: "clamp(2.75rem, 2rem + 5vw, 4.5rem)",
               fontWeight: 500,
               letterSpacing: "-0.02em",

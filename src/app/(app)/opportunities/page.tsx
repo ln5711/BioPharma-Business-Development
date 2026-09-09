@@ -57,7 +57,7 @@ export default async function OpportunitiesPage() {
               <Td
                 align="right"
                 className="tnum text-[16px]"
-                style={{ fontFamily: "var(--font-display)" }}
+                style={{ fontFamily: "var(--font-serif)" }}
               >
                 {opp.opportunityScore}
               </Td>

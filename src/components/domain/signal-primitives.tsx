@@ -31,24 +31,23 @@ function categoryColor(category: string): string {
 }
 
 /**
- * "Why now" — a recognizable recurring element (spec §136). Mono label with the
- * cobalt signal dot, then the trigger set on a thin accent rule.
+ * "Why now" — a recognizable recurring element (spec §136). A thin accent rule
+ * and a serif-italic aside; the trigger, set apart like a pull quote.
  */
 export function WhyNow({ children, className }: { children: string; className?: string }) {
   return (
-    <div
-      className={cn("border-l-2 py-0.5 pl-3", className)}
-      style={{ borderColor: "var(--accent)" }}
+    <p
+      className={cn(
+        "border-l-2 py-0.5 pl-3 text-[13px] leading-relaxed",
+        className,
+      )}
+      style={{ borderColor: "var(--accent)", color: "var(--fg)" }}
     >
-      <span className="mb-1 flex items-center gap-1.5">
-        <span
-          className="h-[5px] w-[5px] rounded-full"
-          style={{ background: "var(--accent)" }}
-        />
-        <span className="eyebrow">Why now</span>
+      <span className="eyebrow mr-2 align-[0.08em]">Why now</span>
+      <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}>
+        {children}
       </span>
-      <p className="text-[13px] leading-relaxed text-[var(--fg)]">{children}</p>
-    </div>
+    </p>
   );
 }
 
@@ -71,7 +70,7 @@ export function OpportunityScore({
       <div className="flex items-baseline gap-1.5">
         <span
           className="tnum font-medium leading-none"
-          style={{ fontFamily: "var(--font-display)", fontSize: px, letterSpacing: "-0.01em" }}
+          style={{ fontFamily: "var(--font-serif)", fontSize: px, letterSpacing: "-0.01em" }}
         >
           {value}
         </span>

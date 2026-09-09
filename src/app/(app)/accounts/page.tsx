@@ -63,7 +63,7 @@ export default async function AccountsPage() {
               <Td
                 align="right"
                 className="tnum text-[15px]"
-                style={{ fontFamily: "var(--font-display)" }}
+                style={{ fontFamily: "var(--font-serif)" }}
               >
                 {topScore}
               </Td>

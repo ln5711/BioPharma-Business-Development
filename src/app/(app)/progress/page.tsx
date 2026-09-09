@@ -48,7 +48,7 @@ export default async function ProgressPage() {
               <span
                 className="tnum leading-none"
                 style={{
-                  fontFamily: "var(--font-display)",
+                  fontFamily: "var(--font-serif)",
                   fontSize: "3rem",
                   fontWeight: 500,
                   letterSpacing: "-0.02em",

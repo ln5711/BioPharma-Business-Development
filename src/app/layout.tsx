@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Inter, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
 const sans = Inter({
@@ -8,20 +8,13 @@ const sans = Inter({
   display: "swap",
 });
 
-// Display face — Hallmark "Cobalt": grotesk, slightly mechanical, tight tracking.
-const display = Space_Grotesk({
+// Editorial display face — page titles, metrics, card headlines (spec §129).
+const serif = Source_Serif_4({
   subsets: ["latin"],
-  variable: "--font-grotesk",
+  variable: "--font-serif-4",
+  display: "swap",
   weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-// Machine-readout voice — eyebrows, meta, status, code.
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jbmono",
-  weight: ["400", "500", "600"],
-  display: "swap",
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -34,11 +27,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      className={`${sans.variable} ${display.variable} ${mono.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="en" className={`${sans.variable} ${serif.variable}`} suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );
