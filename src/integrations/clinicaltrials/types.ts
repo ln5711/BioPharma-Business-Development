@@ -19,6 +19,8 @@ export interface CtgovStudy {
       primaryCompletionDateStruct?: { date?: string };
       completionDateStruct?: { date?: string };
       lastUpdatePostDateStruct?: { date?: string };
+      studyFirstPostDateStruct?: { date?: string };
+      studyFirstSubmitDateStruct?: { date?: string };
     };
     sponsorCollaboratorsModule?: {
       leadSponsor?: { name?: string; class?: string };

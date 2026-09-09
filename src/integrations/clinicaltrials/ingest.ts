@@ -201,16 +201,35 @@ async function ingestStudy(
       })
       .returning({ id: trialSnapshots.id });
 
+    // Distinguish a genuinely new posting from a historical trial we are just
+    // now importing. `firstPostedDate` = when ClinicalTrials.gov first published
+    // it; if that is well in the past, this is "added to the workspace", not
+    // "newly announced". The signal's sourceDate is the real first-posted date
+    // so time-window queries ("this week") behave correctly.
+    const firstPosted = next.firstPostedDate;
+    const importDate = new Date();
+    const HISTORICAL_MS = 45 * 86_400_000;
+    const isHistorical =
+      !!firstPosted && importDate.getTime() - firstPosted.getTime() > HISTORICAL_MS;
+    const phaseLabel = next.phase.replace(/_/g, " ");
+    const factSummary = isHistorical
+      ? `Trial ${next.nctId} (${phaseLabel}, first posted on ClinicalTrials.gov ${firstPosted!
+          .toISOString()
+          .slice(0, 10)}) added to your monitored set. Sponsor: ${
+          next.sponsorName ?? "unknown"
+        }. "${next.title ?? ""}".`
+      : `New ${phaseLabel} trial ${next.nctId}${
+          firstPosted ? ` first posted ${firstPosted.toISOString().slice(0, 10)}` : ""
+        } by ${next.sponsorName ?? "unknown sponsor"}: "${next.title ?? ""}".`;
+
     const res = await emitSignal(db, {
       tenantId,
       signalType: "NEW_TRIAL",
       organizationId,
       trial: trialCtx(trialRow.id, next),
-      factSummary: `New ${next.phase.replace("_", " ")} trial ${next.nctId} posted by ${
-        next.sponsorName ?? "unknown sponsor"
-      }: "${next.title ?? ""}".`,
-      changeRelevance: 65,
-      sourceDate: next.lastCtgovUpdate,
+      factSummary,
+      changeRelevance: isHistorical ? 35 : 65,
+      sourceDate: firstPosted ?? next.lastCtgovUpdate,
       sourceUrl: STUDY_URL(next.nctId),
       capability,
       account,
@@ -430,6 +449,7 @@ function toTrialInsert(
     primaryCompletionDate: n.primaryCompletionDate,
     completionDate: n.completionDate,
     lastCtgovUpdate: n.lastCtgovUpdate,
+    firstPostedDate: n.firstPostedDate,
     molecularEligibility: n.molecularEligibility,
     biomarkerRequirements: n.biomarkerRequirements,
     ctdnaMentions: n.ctdnaMentions,

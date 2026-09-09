@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   commercialSignals,
@@ -15,12 +15,51 @@ export type SignalRow = typeof commercialSignals.$inferSelect & {
   trialNctId: string | null;
 };
 
+const likeArg = (s: string) => `%${s.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+
 export async function getTopSignals(
   tenantId: string,
-  opts: { limit?: number; minScore?: number } = {},
-): Promise<SignalRow[]> {
+  opts: {
+    limit?: number;
+    minScore?: number;
+    company?: string;
+    q?: string;
+    type?: string;
+    sinceDays?: number;
+  } = {},
+): Promise<{ rows: SignalRow[]; total: number }> {
   const db = await getDb();
-  const rows = await db
+
+  const conds = [
+    eq(commercialSignals.tenantId, tenantId),
+    ne(commercialSignals.status, "dismissed"),
+  ];
+  if (opts.minScore) conds.push(gte(commercialSignals.opportunityScore, opts.minScore));
+  if (opts.type) conds.push(sql`${commercialSignals.signalType} = ${opts.type}`);
+  if (opts.sinceDays) {
+    conds.push(
+      gte(
+        sql`coalesce(${commercialSignals.sourceDate}, ${commercialSignals.detectedAt})`,
+        new Date(Date.now() - opts.sinceDays * 86_400_000),
+      ),
+    );
+  }
+  if (opts.company) {
+    conds.push(ilike(organizations.canonicalName, likeArg(opts.company)));
+  }
+  if (opts.q) {
+    conds.push(
+      or(
+        ilike(commercialSignals.headline, likeArg(opts.q)),
+        ilike(commercialSignals.factSummary, likeArg(opts.q)),
+        ilike(organizations.canonicalName, likeArg(opts.q)),
+        ilike(trials.nctId, likeArg(opts.q)),
+      )!,
+    );
+  }
+  const where = and(...conds);
+
+  const base = db
     .select({
       signal: commercialSignals,
       organizationName: organizations.canonicalName,
@@ -29,26 +68,46 @@ export async function getTopSignals(
     .from(commercialSignals)
     .leftJoin(organizations, eq(organizations.id, commercialSignals.organizationId))
     .leftJoin(trials, eq(trials.id, commercialSignals.trialId))
-    .where(
-      and(
-        eq(commercialSignals.tenantId, tenantId),
-        ne(commercialSignals.status, "dismissed"),
-        opts.minScore
-          ? gte(commercialSignals.opportunityScore, opts.minScore)
-          : undefined,
-      ),
-    )
-    .orderBy(
-      desc(commercialSignals.opportunityScore),
-      desc(commercialSignals.detectedAt),
-    )
-    .limit(opts.limit ?? 25);
+    .where(where);
 
-  return rows.map((r) => ({
-    ...r.signal,
-    organizationName: r.organizationName,
-    trialNctId: r.trialNctId,
-  }));
+  const [rows, [{ n }]] = await Promise.all([
+    base
+      .orderBy(desc(commercialSignals.opportunityScore), desc(commercialSignals.detectedAt))
+      .limit(opts.limit ?? 25),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(commercialSignals)
+      .leftJoin(organizations, eq(organizations.id, commercialSignals.organizationId))
+      .leftJoin(trials, eq(trials.id, commercialSignals.trialId))
+      .where(where),
+  ]);
+
+  return {
+    rows: rows.map((r) => ({
+      ...r.signal,
+      organizationName: r.organizationName,
+      trialNctId: r.trialNctId,
+    })),
+    total: n,
+  };
+}
+
+/** A single signal, tenant-scoped, for the `/intelligence?signal=<id>` deep link. */
+export async function getSignalById(tenantId: string, id: string): Promise<SignalRow | null> {
+  const db = await getDb();
+  const [r] = await db
+    .select({
+      signal: commercialSignals,
+      organizationName: organizations.canonicalName,
+      trialNctId: trials.nctId,
+    })
+    .from(commercialSignals)
+    .leftJoin(organizations, eq(organizations.id, commercialSignals.organizationId))
+    .leftJoin(trials, eq(trials.id, commercialSignals.trialId))
+    .where(and(eq(commercialSignals.tenantId, tenantId), eq(commercialSignals.id, id)))
+    .limit(1);
+  if (!r) return null;
+  return { ...r.signal, organizationName: r.organizationName, trialNctId: r.trialNctId };
 }
 
 /**

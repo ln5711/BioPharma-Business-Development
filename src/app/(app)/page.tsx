@@ -34,13 +34,28 @@ export default async function HomePage({
   const heading = authenticated && user?.lastLoginAt ? "Welcome back" : greet;
 
   const rangeLabel = range === "24h" ? "24 hours" : range === "7d" ? "7 days" : "30 days";
+  // Carry the same timeframe the metric was computed over into the linked view.
+  const sinceDays = range === "24h" ? 1 : range === "7d" ? 7 : 30;
 
   const metrics = [
     { value: counts.trialsTracked, label: "Trials tracked", href: "/trials" },
-    { value: counts.trialChanges, label: `Changes detected · ${rangeLabel}`, href: "/trials" },
-    { value: counts.highPriority, label: `High-priority signals · ${rangeLabel}`, href: "/intelligence?min=70", accent: true },
+    {
+      value: counts.trialChanges,
+      label: `Changes detected · ${rangeLabel}`,
+      href: `/intelligence?since=${sinceDays}&type=TRIAL_STATUS_CHANGE`,
+    },
+    {
+      value: counts.highPriority,
+      label: `High-priority signals · ${rangeLabel}`,
+      href: `/intelligence?min=70&since=${sinceDays}`,
+      accent: true,
+    },
     { value: counts.accountsActive, label: `Accounts with activity · ${rangeLabel}`, href: "/accounts" },
-    { value: counts.meaningfulSignals, label: `Signals · ${rangeLabel}`, href: "/intelligence" },
+    {
+      value: counts.meaningfulSignals,
+      label: `Signals · ${rangeLabel}`,
+      href: `/intelligence?since=${sinceDays}`,
+    },
     { value: counts.openTasks, label: "Follow-ups & tasks due", href: "/outreach" },
   ];
 

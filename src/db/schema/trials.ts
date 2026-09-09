@@ -73,6 +73,9 @@ export const trials = pgTable(
     primaryCompletionDate: timestamp("primary_completion_date", { withTimezone: true }),
     completionDate: timestamp("completion_date", { withTimezone: true }),
     lastCtgovUpdate: timestamp("last_ctgov_update", { withTimezone: true }),
+    // ClinicalTrials.gov "Study First Posted" — the date the trial first became
+    // public. Distinct from `first_seen_at` (when newwin first imported it).
+    firstPostedDate: timestamp("first_posted_date", { withTimezone: true }),
 
     // ─── Derived commercial-intelligence flags (spec §6 / §141) ────────────
     molecularEligibility: boolean("molecular_eligibility").notNull().default(false),

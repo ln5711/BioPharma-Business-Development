@@ -43,6 +43,7 @@ export interface NormalizedTrial {
   primaryCompletionDate: Date | null;
   completionDate: Date | null;
   lastCtgovUpdate: Date | null;
+  firstPostedDate: Date | null;
   molecularEligibility: boolean;
   biomarkerRequirements: string[];
   ctdnaMentions: boolean;
@@ -137,6 +138,9 @@ export function normalizeStudy(study: CtgovStudy): NormalizedTrial {
     primaryCompletionDate: parseCtgovDate(status.primaryCompletionDateStruct?.date),
     completionDate: parseCtgovDate(status.completionDateStruct?.date),
     lastCtgovUpdate: parseCtgovDate(status.lastUpdatePostDateStruct?.date),
+    firstPostedDate:
+      parseCtgovDate(status.studyFirstPostDateStruct?.date) ??
+      parseCtgovDate(status.studyFirstSubmitDateStruct?.date),
     molecularEligibility: flags.molecularEligibility,
     biomarkerRequirements: extractBiomarkerRequirements(eligibilityText),
     ctdnaMentions: flags.ctdna,
