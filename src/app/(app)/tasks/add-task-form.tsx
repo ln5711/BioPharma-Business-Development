@@ -31,12 +31,12 @@ export function AddTaskForm({ defaultCategory = "outreach" as TaskCategory }) {
         placeholder="Add a task…"
         maxLength={500}
         autoComplete="off"
-        className="min-w-[220px] flex-1 rounded-[var(--radius-sm)] border bg-[var(--panel)] px-3 py-2 text-[13.5px] outline-none focus:border-[var(--accent)]"
+        className="min-w-[220px] flex-1 rounded-[9px] border border-[rgba(150,185,255,.14)] bg-[rgba(10,8,22,.5)] px-3 py-2.5 text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--dim)] focus:border-[var(--accent-border)]"
       />
       <select
         name="category"
         defaultValue={defaultCategory}
-        className="rounded-[var(--radius-sm)] border bg-[var(--panel)] px-2.5 py-2 text-[12.5px] outline-none focus:border-[var(--accent)]"
+        className="rounded-[9px] border border-[rgba(150,185,255,.14)] bg-[rgba(10,8,22,.5)] px-2.5 py-2.5 text-[12.5px] text-[var(--fg)] outline-none focus:border-[var(--accent-border)]"
       >
         {TASK_CATEGORIES.map((c) => (
           <option key={c} value={c}>
@@ -47,8 +47,8 @@ export function AddTaskForm({ defaultCategory = "outreach" as TaskCategory }) {
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-2 text-[12.5px] font-medium text-white disabled:opacity-60"
-        style={{ background: "var(--accent)" }}
+        className="inline-flex items-center gap-1.5 rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-semibold disabled:opacity-60"
+        style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }}
       >
         <Plus size={13} /> Add
       </button>

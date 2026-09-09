@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MORE_NAV, PRIMARY_NAV } from "./nav";
+import { PulsarMark } from "@/components/brand/pulsar-mark";
+import { NAV_GROUPS } from "./nav";
 
 /**
- * Collapsible left rail on a dark-navy gradient. Primary sections carry a round
- * dot marker; the "Workspace" group carries a rotated-square marker. Active =
- * a soft blue pill plus a bright left bar.
+ * Glassy left rail. Navigation is grouped; the active item gets a cyan wash +
+ * inset ring and a glowing diamond dot. Collapses to a 70px rail (persisted).
  */
 export function Sidebar() {
   const pathname = usePathname();
@@ -18,14 +18,13 @@ export function Sidebar() {
 
   useEffect(() => {
     try {
-      const s = localStorage.getItem("nw-rail");
-      if (s === "0") setOpen(false);
+      if (localStorage.getItem("nw-rail") === "0") setOpen(false);
     } catch {
       /* private mode */
     }
   }, []);
 
-  const toggle = () => {
+  const toggle = () =>
     setOpen((v) => {
       try {
         localStorage.setItem("nw-rail", v ? "0" : "1");
@@ -34,148 +33,116 @@ export function Sidebar() {
       }
       return !v;
     });
-  };
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
     <nav
-      className="flex shrink-0 flex-col overflow-hidden py-[18px] transition-[width] duration-300"
+      className="hidden shrink-0 flex-col border-r py-[22px] md:flex"
       style={{
-        background: "var(--rail)",
-        width: open ? "236px" : "72px",
-        transitionTimingFunction: "cubic-bezier(.22,1,.36,1)",
+        width: open ? "232px" : "70px",
+        background: "var(--nav-glass)",
+        borderColor: "var(--hairline)",
+        backdropFilter: "blur(12px)",
+        transition: "width .34s cubic-bezier(.22,1,.36,1)",
       }}
     >
-      <div className="flex items-center justify-between gap-2.5 px-4 pb-[22px]">
+      <div className="flex items-center gap-[11px] px-4 pb-6">
+        <PulsarMark size={28} />
         {open ? (
-          <Link
-            href="/"
-            className="whitespace-nowrap text-[21px] font-medium tracking-tight text-white"
-            style={{ fontFamily: "var(--font-serif)", letterSpacing: "-0.015em" }}
+          <span
+            className="whitespace-nowrap text-[18.5px] text-[#EDF2FF]"
+            style={{ fontFamily: "var(--font-serif)", letterSpacing: ".03em" }}
           >
             newwin
-          </Link>
+          </span>
         ) : null}
         <button
           type="button"
           onClick={toggle}
           aria-label={open ? "Collapse navigation" : "Expand navigation"}
-          className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg text-[#a9bee4] transition-colors hover:text-white"
-          style={{ background: "rgba(255,255,255,.07)" }}
+          className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[#9AA3C0] transition-colors hover:text-white"
+          style={{ background: "rgba(150,185,255,.08)" }}
         >
-          {open ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+          {open ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
         </button>
       </div>
 
-      <RailGroup
-        items={PRIMARY_NAV}
-        open={open}
-        isActive={isActive}
-        marker="dot"
-      />
+      <div className="flex flex-1 flex-col overflow-y-auto px-2.5">
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.label || gi} className="flex flex-col gap-0.5 pb-3.5">
+            {group.label && open ? (
+              <div
+                className="px-3 pb-2 pt-3 text-[9.5px] font-semibold uppercase"
+                style={{ letterSpacing: ".22em", color: "#5D6890", fontFamily: "var(--font-mono)" }}
+              >
+                {group.label}
+              </div>
+            ) : group.label ? (
+              <div className="mx-2 my-2 border-t border-white/10" />
+            ) : null}
 
-      {open ? (
-        <div
-          className="mx-5 mb-2.5 mt-[22px] text-[10.5px] font-semibold uppercase"
-          style={{ letterSpacing: "0.16em", color: "#5c7299" }}
-        >
-          Workspace
-        </div>
-      ) : (
-        <div className="mx-4 my-3 border-t border-white/10" />
-      )}
-      <div className="flex-1 overflow-y-auto">
-        <RailGroup items={MORE_NAV} open={open} isActive={isActive} marker="diamond" small />
+            {group.items.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={item.label}
+                  className="group relative flex min-h-[40px] items-center gap-3 rounded-[10px] px-3 py-2.5 transition-colors"
+                >
+                  {active ? (
+                    <span
+                      className="pointer-events-none absolute inset-0 rounded-[10px]"
+                      style={{
+                        background:
+                          "linear-gradient(96deg, rgba(143,211,255,.16), rgba(143,211,255,.03))",
+                        boxShadow: "inset 0 0 0 1px rgba(143,211,255,.22)",
+                      }}
+                    />
+                  ) : (
+                    <span className="pointer-events-none absolute inset-0 rounded-[10px] opacity-0 transition-opacity group-hover:opacity-100 group-hover:bg-[rgba(150,185,255,.07)]" />
+                  )}
+                  <span
+                    className={cn("relative h-[6px] w-[6px] shrink-0 rotate-45")}
+                    style={{
+                      background: active ? "#8FD3FF" : "#4A5478",
+                      boxShadow: active ? "0 0 10px rgba(143,211,255,.9)" : "none",
+                    }}
+                  />
+                  {open ? (
+                    <span
+                      className="relative whitespace-nowrap text-[13px]"
+                      style={{ color: active ? "#F2F6FF" : "#9AA3C0", fontWeight: active ? 600 : 400 }}
+                    >
+                      {item.label}
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
-      <div className="mt-auto flex items-center gap-2.5 border-t border-white/10 px-[14px] pt-3.5">
+      <div
+        className="flex items-center gap-[11px] border-t px-4 pt-3.5"
+        style={{ borderColor: "var(--hairline)" }}
+      >
         <span
-          className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[11.5px] font-semibold text-white"
-          style={{ background: "linear-gradient(140deg,#3a6ee0,#1b4fd8)", letterSpacing: ".02em" }}
+          className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[11px] font-bold"
+          style={{ background: "linear-gradient(140deg,#7FC4F8,#5A7FE8)", color: "#06101F" }}
         >
           LN
         </span>
         {open ? (
           <span className="flex min-w-0 flex-col">
-            <span className="truncate text-[12.5px] text-[#e4ecfa]">Luciann Nguyen</span>
-            <span className="truncate text-[11px] text-[#7189b2]">Predicine · demo</span>
+            <span className="truncate text-[12.5px] text-[#E4E9F8]">Luciann Nguyen</span>
+            <span className="truncate text-[11px] text-[#6B7398]">Predicine · demo</span>
           </span>
         ) : null}
       </div>
     </nav>
-  );
-}
-
-function RailGroup({
-  items,
-  open,
-  isActive,
-  marker,
-  small,
-}: {
-  items: { label: string; href: string }[];
-  open: boolean;
-  isActive: (href: string) => boolean;
-  marker: "dot" | "diamond";
-  small?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5 px-2.5">
-      {items.map((item) => {
-        const active = isActive(item.href);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "group relative flex items-center gap-[11px] rounded-[9px] px-3 transition-colors",
-              small ? "min-h-[38px] py-2" : "min-h-[42px] py-2.5",
-            )}
-            style={{ background: active ? "rgba(58,110,224,.22)" : undefined }}
-          >
-            {active ? (
-              <>
-                <span
-                  className="pointer-events-none absolute inset-0 rounded-[9px]"
-                  style={{ boxShadow: "inset 0 0 0 1px rgba(122,160,232,.3)" }}
-                />
-                <span
-                  className="absolute left-[-10px] top-3 bottom-3 w-[3px] rounded-r"
-                  style={{ background: "var(--nav-marker)" }}
-                />
-              </>
-            ) : (
-              <span className="pointer-events-none absolute inset-0 rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 group-hover:bg-white/[0.06]" />
-            )}
-            <span
-              className={cn(
-                "relative shrink-0",
-                marker === "dot"
-                  ? "h-[7px] w-[7px] rounded-full"
-                  : "h-[5px] w-[5px] rotate-45",
-              )}
-              style={{ background: active ? "#6e9bf0" : "#3f567f" }}
-            />
-            {open ? (
-              <span
-                className={cn(
-                  "relative whitespace-nowrap",
-                  small ? "text-[13px]" : "text-[13.5px]",
-                )}
-                style={{
-                  color: active ? "#fff" : "#a9bee4",
-                  fontWeight: active ? 600 : 400,
-                  letterSpacing: "-0.005em",
-                }}
-              >
-                {item.label}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
-    </div>
   );
 }

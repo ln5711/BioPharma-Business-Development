@@ -102,7 +102,7 @@ function Bar({
   return (
     <div
       className={`overflow-hidden rounded-full ${thick ? "h-2" : "h-[5px]"} ${className ?? ""}`}
-      style={{ background: "color-mix(in oklab, var(--fg) 8%, transparent)" }}
+      style={{ background: "rgba(150,185,255,.12)" }}
     >
       <div
         className="h-full rounded-full transition-[width] duration-500"

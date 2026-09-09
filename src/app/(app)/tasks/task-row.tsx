@@ -23,10 +23,14 @@ export function TaskRow({ task }: { task: Task }) {
         className={cn(
           "mt-[1px] grid h-[18px] w-[18px] shrink-0 place-items-center rounded-[4px] border transition-colors",
           task.done
-            ? "border-transparent text-white"
+            ? "border-transparent text-[#06101F]"
             : "border-[var(--faint)] text-transparent hover:border-[var(--accent)]",
         )}
-        style={task.done ? { background: "var(--accent)" } : undefined}
+        style={
+          task.done
+            ? { background: "var(--accent)", boxShadow: "var(--accent-glow)" }
+            : undefined
+        }
       >
         <Check size={12} strokeWidth={3} />
       </button>

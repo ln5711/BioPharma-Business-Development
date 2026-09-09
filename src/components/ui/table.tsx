@@ -2,8 +2,8 @@ import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Data table inside a white card — hairline row dividers, no zebra, soft hover.
- * Always scrolls inside its own container.
+ * Data table inside a translucent card — hairline row dividers, no zebra,
+ * a faint hover wash. Scrolls inside its own container.
  */
 export function Table({
   head,
@@ -17,7 +17,10 @@ export function Table({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr className="border-b" style={{ borderColor: "var(--hairline)", background: "var(--panel-2)" }}>
+            <tr
+              className="border-b"
+              style={{ borderColor: "var(--hairline)", background: "rgba(150,185,255,.04)" }}
+            >
               {head}
             </tr>
           </thead>
@@ -38,10 +41,11 @@ export function Th({
     <th
       {...rest}
       className={cn(
-        "px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]",
+        "px-4 py-3 text-[9.5px] font-semibold uppercase text-[var(--faint)]",
         align === "right" ? "text-right" : "text-left",
         className,
       )}
+      style={{ letterSpacing: ".14em", fontFamily: "var(--font-mono)" }}
     >
       {children}
     </th>
@@ -51,8 +55,8 @@ export function Th({
 export function Tr({ children }: { children: ReactNode }) {
   return (
     <tr
-      className="border-b transition-colors last:border-0 hover:bg-[var(--panel-2)]"
-      style={{ borderColor: "var(--hairline)" }}
+      className="border-b transition-colors last:border-0 hover:bg-[rgba(150,185,255,.04)]"
+      style={{ borderColor: "rgba(150,185,255,.09)" }}
     >
       {children}
     </tr>

@@ -23,30 +23,52 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-/**
- * Top-level sections shown directly in the horizontal nav (spec §48).
- * The rest live behind the "More" menu.
- */
-export const PRIMARY_NAV: NavItem[] = [
-  { label: "Home", href: "/", icon: LayoutDashboard },
+export interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+/** Sidebar navigation, grouped (Pulsar mockup: a blank lead group + labelled sections). */
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "",
+    items: [
+      { label: "Command", href: "/", icon: LayoutDashboard },
+      { label: "Signals", href: "/signals", icon: Activity },
+      { label: "Accounts", href: "/accounts", icon: Building2 },
+      { label: "Opportunities", href: "/opportunities", icon: Target },
+    ],
+  },
+  {
+    label: "Intelligence",
+    items: [
+      { label: "Trials", href: "/trials", icon: FlaskConical },
+      { label: "Assets", href: "/assets", icon: Beaker },
+      { label: "People", href: "/people", icon: Users },
+      { label: "Watchlists", href: "/watchlists", icon: Eye },
+    ],
+  },
+  {
+    label: "Execution",
+    items: [
+      { label: "Outreach", href: "/outreach", icon: Mails },
+      { label: "Campaigns", href: "/campaigns", icon: Megaphone },
+      { label: "Meetings", href: "/meetings", icon: CalendarClock },
+      { label: "Tasks", href: "/tasks", icon: ListChecks },
+      { label: "Progress", href: "/progress", icon: TrendingUp },
+      { label: "CRM", href: "/crm", icon: RefreshCw },
+      { label: "Settings", href: "/settings", icon: Settings },
+    ],
+  },
+];
+
+export const ALL_NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+
+/** Phone bottom tab bar (Pulsar mockup — 5 tabs). */
+export const BOTTOM_NAV: NavItem[] = [
+  { label: "Command", href: "/", icon: LayoutDashboard },
   { label: "Signals", href: "/signals", icon: Activity },
   { label: "Accounts", href: "/accounts", icon: Building2 },
-  { label: "Trials", href: "/trials", icon: FlaskConical },
-  { label: "Tasks", href: "/tasks", icon: ListChecks },
-  { label: "Progress", href: "/progress", icon: TrendingUp },
-];
-
-/** Secondary sections — grouped under "Workspace" in the sidebar. */
-export const MORE_NAV: NavItem[] = [
-  { label: "Assets", href: "/assets", icon: Beaker },
-  { label: "People", href: "/people", icon: Users },
   { label: "Outreach", href: "/outreach", icon: Mails },
-  { label: "Campaigns", href: "/campaigns", icon: Megaphone },
-  { label: "Meetings", href: "/meetings", icon: CalendarClock },
-  { label: "Opportunities", href: "/opportunities", icon: Target },
-  { label: "CRM", href: "/crm", icon: RefreshCw },
-  { label: "Watchlists", href: "/watchlists", icon: Eye },
-  { label: "Settings", href: "/settings", icon: Settings },
+  { label: "Tasks", href: "/tasks", icon: ListChecks },
 ];
-
-export const ALL_NAV: NavItem[] = [...PRIMARY_NAV, ...MORE_NAV];

@@ -8,16 +8,15 @@ const sans = Instrument_Sans({
   display: "swap",
 });
 
-// Display face — page titles, entity names, figures.
+// Display face — Source Serif 4 at light weights (300/400) for the Pulsar look.
 const serif = Source_Serif_4({
   subsets: ["latin"],
   variable: "--font-serif-4",
   display: "swap",
-  weight: ["400", "500", "600"],
-  style: ["normal", "italic"],
+  weight: ["300", "400", "500"],
 });
 
-// Machine-readout voice — eyebrows, NCT ids, score values, kbd hints.
+// Machine-readout voice — eyebrows, ids, figures, kbd hints.
 const mono = IBM_Plex_Mono({
   subsets: ["latin"],
   variable: "--font-plex-mono",
@@ -28,7 +27,7 @@ const mono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "newwin",
   description:
-    "AI-native oncology business-development operating system — turn scientific change into commercial action.",
+    "Signal intelligence for oncology business development — every trial amendment, publication, personnel move and financing event, deduplicated, scored and sequenced.",
 };
 
 export default function RootLayout({

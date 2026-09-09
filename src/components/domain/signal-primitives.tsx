@@ -1,50 +1,31 @@
 import { cn } from "@/lib/utils";
 import { signalMeta } from "@/lib/signals/taxonomy";
 
-/** Small consistent identifier per signal category (spec §135) — a dot + label. */
+/** Signal category identifier — a small glowing dot + label. */
 export function SignalBadge({ signalType }: { signalType: string }) {
   const meta = signalMeta(signalType);
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--muted)]">
-      <span
-        className="h-[5px] w-[5px] rounded-full"
-        style={{ background: categoryColor(meta.category) }}
-      />
+    <span
+      className="inline-flex items-center gap-1.5 rounded-[4px] px-2 py-[2px] text-[11px]"
+      style={{ color: "#8FD3FF", background: "rgba(143,211,255,.1)" }}
+    >
       {meta.label}
     </span>
   );
 }
 
-function categoryColor(category: string): string {
-  const map: Record<string, string> = {
-    clinical_trial: "var(--color-blue-500)",
-    publication: "var(--color-teal-600)",
-    regulatory: "var(--color-warning)",
-    corporate: "var(--color-ink-400)",
-    leadership: "var(--color-sky-300)",
-    conference: "var(--color-blue-400)",
-    partnership: "var(--color-positive)",
-    relationship: "var(--color-priority-medium)",
-    crm: "var(--color-ink-400)",
-  };
-  return map[category] ?? "var(--color-ink-400)";
-}
-
 /**
- * "Why now" — a recognizable recurring element (spec §136). Gradient-tint rule
- * with the blue diamond and a mono-cap label; the trigger, set apart.
+ * "Why now" — a recognizable recurring element (spec §136). Glowing diamond +
+ * mono cap label, set inline with the trigger.
  */
 export function WhyNow({ children, className }: { children: string; className?: string }) {
   return (
-    <div className={cn("why-now flex items-start gap-2.5 px-3.5 py-2.5", className)}>
-      <span
-        className="mt-[7px] h-1 w-1 shrink-0 rotate-45"
-        style={{ background: "var(--accent)" }}
-      />
-      <span className="text-[13.5px] leading-[1.55] text-[var(--color-navy-800)]">
+    <div className={cn("why-now", className)}>
+      <span className="diamond mt-[6px]" style={{ width: 4, height: 4 }} />
+      <span className="text-[13px] leading-[1.55] text-[var(--muted)]">
         <span
-          className="mr-2 align-[1px] text-[10.5px] font-semibold uppercase tracking-[0.16em]"
-          style={{ color: "var(--accent)" }}
+          className="mr-2 text-[10px] uppercase"
+          style={{ letterSpacing: ".18em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}
         >
           Why now
         </span>
@@ -54,7 +35,7 @@ export function WhyNow({ children, className }: { children: string; className?: 
   );
 }
 
-/** Opportunity score — a serif figure with a component breakdown (spec §137). */
+/** Opportunity score — serif-300 figure + label, with an optional breakdown. */
 export function OpportunityScore({
   score,
   breakdown,
@@ -65,28 +46,25 @@ export function OpportunityScore({
   size?: "sm" | "md" | "lg";
 }) {
   const value = score ?? 0;
-  const tone = value >= 75 ? "high" : value >= 55 ? "medium" : "neutral";
-  const px = size === "lg" ? "2.4rem" : size === "sm" ? "1.35rem" : "1.9rem";
-  const scoreColor =
-    tone === "high"
-      ? "var(--color-navy-800)"
-      : tone === "medium"
-        ? "var(--color-blue-600)"
-        : "var(--color-ink-500)";
+  const tone = value >= 85 ? "high" : value >= 60 ? "medium" : "neutral";
+  const px = size === "lg" ? "2.25rem" : size === "sm" ? "1.35rem" : "1.65rem";
+  const color =
+    tone === "high" ? "#8FD3FF" : tone === "medium" ? "#B7BFD8" : "var(--faint)";
 
   return (
     <div className="flex flex-col items-end gap-1">
       <span
-        className="tnum font-medium leading-none"
-        style={{ fontFamily: "var(--font-serif)", fontSize: px, letterSpacing: "-0.02em", color: scoreColor }}
+        className="tnum leading-none"
+        style={{ fontFamily: "var(--font-serif)", fontSize: px, fontWeight: 300, color }}
       >
         {value}
       </span>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]">
-          {tone === "high" ? "High priority" : "Opportunity"}
-        </span>
-      </div>
+      <span
+        className="text-[9.5px] uppercase"
+        style={{ letterSpacing: ".14em", color: "#6B7398", fontFamily: "var(--font-mono)" }}
+      >
+        {tone === "high" ? "Critical" : tone === "medium" ? "Priority" : "Watch"}
+      </span>
       {breakdown ? <ScoreBreakdown breakdown={breakdown} /> : null}
     </div>
   );
@@ -126,14 +104,14 @@ export function ScoreBreakdown({ breakdown }: { breakdown: Record<string, number
               {COMPONENT_LABEL[key]}
             </span>
             <span
-              className="h-[5px] flex-1 overflow-hidden rounded"
-              style={{ background: "#edf1fa" }}
+              className="h-[4px] flex-1 overflow-hidden rounded"
+              style={{ background: "rgba(150,185,255,.12)" }}
             >
               <span
                 className="grow-bar block h-full rounded"
                 style={{
                   width: `${(val / max) * 100}%`,
-                  background: "linear-gradient(90deg,#3a6ee0,#1b4fd8)",
+                  background: "linear-gradient(90deg,#5A7FE8,#8FD3FF)",
                 }}
               />
             </span>
