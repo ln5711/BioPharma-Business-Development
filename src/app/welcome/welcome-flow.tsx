@@ -12,7 +12,9 @@ type Mode = "create" | "signin";
 
 export function WelcomeFlow({ replayIntro = false }: { replayIntro?: boolean }) {
   const [phase, setPhase] = useState<Phase>("intro");
-  const [mode, setMode] = useState<Mode>("create");
+  // Sign in is the default entry point; new users switch to Create explicitly.
+  // Switching mode never touches `phase`, so the intro does not replay.
+  const [mode, setMode] = useState<Mode>("signin");
 
   // The animated entrance is purely presentational. It hands control to the form
   // via onDone (timer, Skip button, reduced-motion, or a hard failsafe) and can
@@ -218,33 +220,57 @@ function CreateForm({ onSignIn }: { onSignIn: () => void }) {
 function SignInForm({ onCreate }: { onCreate: () => void }) {
   const [state, action, pending] = useActionState<AuthResult | null, FormData>(signIn, null);
   return (
-    <form action={action} className="panel-glass fade-slide-in p-7">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".26em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}>
-          Sign in
+    <div className="fade-slide-in">
+      <form action={action} className="panel-glass p-7">
+        <div
+          className="text-[10.5px] uppercase"
+          style={{ letterSpacing: ".26em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}
+        >
+          Sign in to newwin
         </div>
-        <button type="button" onClick={onCreate} className="text-[12px] text-[#9AA3C0] hover:text-white">
-          Create an account
+        <div className="mt-5 flex flex-col gap-4">
+          <Field label="Work email">
+            <input name="email" required type="email" placeholder="you@company.com" className={inputCls} />
+          </Field>
+          <Field label="Password">
+            <input
+              name="password"
+              required
+              type="password"
+              placeholder="Your password"
+              className={inputCls}
+            />
+          </Field>
+        </div>
+        {state && !state.ok ? (
+          <p className="mt-4 text-[12.5px] text-[#F0866A]">{state.error}</p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={pending}
+          className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[11px] px-4 py-3.5 text-[14px] font-semibold disabled:opacity-60"
+          style={{
+            background: "var(--accent-btn)",
+            color: "var(--accent-btn-ink)",
+            boxShadow: "var(--accent-btn-shadow)",
+          }}
+        >
+          {pending ? "Signing in…" : "Sign in"} <ArrowRight size={15} />
+        </button>
+      </form>
+
+      <div className="mt-4 rounded-[14px] border p-4 text-center" style={{ borderColor: "rgba(150,185,255,.16)" }}>
+        <p className="text-[13px] text-[#C7CEE4]">New to newwin?</p>
+        <button
+          type="button"
+          onClick={onCreate}
+          className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-[11px] border px-4 py-3 text-[13.5px] font-semibold"
+          style={{ borderColor: "rgba(143,211,255,.4)", background: "rgba(143,211,255,.08)", color: "#DDF1FF" }}
+        >
+          Create an account <ArrowRight size={14} />
         </button>
       </div>
-      <div className="mt-5 flex flex-col gap-4">
-        <Field label="Work email">
-          <input name="email" required type="email" placeholder="you@company.com" className={inputCls} />
-        </Field>
-        <Field label="Password">
-          <input name="password" required type="password" placeholder="Your password" className={inputCls} />
-        </Field>
-      </div>
-      {state && !state.ok ? <p className="mt-4 text-[12.5px] text-[#F0866A]">{state.error}</p> : null}
-      <button
-        type="submit"
-        disabled={pending}
-        className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[11px] px-4 py-3.5 text-[14px] font-semibold disabled:opacity-60"
-        style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)", boxShadow: "var(--accent-btn-shadow)" }}
-      >
-        {pending ? "Signing in…" : "Sign in"} <ArrowRight size={15} />
-      </button>
-    </form>
+    </div>
   );
 }
 

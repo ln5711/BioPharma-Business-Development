@@ -5,7 +5,9 @@
       "@/*": ["../src/*"],
       "server-only": ["./_stubs/empty.ts"],
       "client-only": ["./_stubs/empty.ts"],
-      "next/headers": ["./_stubs/next-headers.ts"]
+      "next/headers": ["./_stubs/next-headers.ts"],
+      "next/cache": ["./_stubs/next-cache.ts"],
+      "next/navigation": ["./_stubs/next-navigation.ts"]
     }
   },
   "include": ["**/*.ts"]
