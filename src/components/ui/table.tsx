@@ -2,8 +2,8 @@ import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Editorial data table — hairline rules, no zebra, no outer box, generous cells,
- * serif entity names. Always scrolls inside its own container.
+ * Data table inside a white card — hairline row dividers, no zebra, soft hover.
+ * Always scrolls inside its own container.
  */
 export function Table({
   head,
@@ -13,15 +13,17 @@ export function Table({
   children: ReactNode;
 }) {
   return (
-    <div className="-mx-1 overflow-x-auto">
-      <table className="w-full border-collapse text-[13px]">
-        <thead>
-          <tr className="border-b" style={{ borderColor: "var(--hairline)" }}>
-            {head}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+    <div className="card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="border-b" style={{ borderColor: "var(--hairline)", background: "var(--panel-2)" }}>
+              {head}
+            </tr>
+          </thead>
+          <tbody>{children}</tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -36,7 +38,7 @@ export function Th({
     <th
       {...rest}
       className={cn(
-        "eyebrow px-3 py-2.5 font-semibold first:pl-1 last:pr-1",
+        "px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]",
         align === "right" ? "text-right" : "text-left",
         className,
       )}
@@ -67,7 +69,7 @@ export function Td({
     <td
       {...rest}
       className={cn(
-        "px-3 py-3.5 align-top first:pl-1 last:pr-1",
+        "px-4 py-3.5 align-top",
         align === "right" ? "text-right tabular-nums" : "text-left",
         className,
       )}

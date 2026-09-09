@@ -10,6 +10,7 @@ import {
   Mails,
   Megaphone,
   RefreshCw,
+  Settings,
   Target,
   TrendingUp,
   Users,
@@ -35,7 +36,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { label: "Progress", href: "/progress", icon: TrendingUp },
 ];
 
-/** Secondary sections — reachable from the "More" menu. */
+/** Secondary sections — grouped under "Workspace" in the sidebar. */
 export const MORE_NAV: NavItem[] = [
   { label: "Assets", href: "/assets", icon: Beaker },
   { label: "People", href: "/people", icon: Users },
@@ -45,6 +46,7 @@ export const MORE_NAV: NavItem[] = [
   { label: "Opportunities", href: "/opportunities", icon: Target },
   { label: "CRM", href: "/crm", icon: RefreshCw },
   { label: "Watchlists", href: "/watchlists", icon: Eye },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 export const ALL_NAV: NavItem[] = [...PRIMARY_NAV, ...MORE_NAV];

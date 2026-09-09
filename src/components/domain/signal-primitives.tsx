@@ -31,27 +31,30 @@ function categoryColor(category: string): string {
 }
 
 /**
- * "Why now" — a recognizable recurring element (spec §136). A thin accent rule
- * and a serif-italic aside; the trigger, set apart like a pull quote.
+ * "Why now" — a recognizable recurring element (spec §136). Gradient-tint rule
+ * with the blue diamond and a mono-cap label; the trigger, set apart.
  */
 export function WhyNow({ children, className }: { children: string; className?: string }) {
   return (
-    <p
-      className={cn(
-        "border-l-2 py-0.5 pl-3 text-[13px] leading-relaxed",
-        className,
-      )}
-      style={{ borderColor: "var(--accent)", color: "var(--fg)" }}
-    >
-      <span className="eyebrow mr-2 align-[0.08em]">Why now</span>
-      <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic" }}>
+    <div className={cn("why-now flex items-start gap-2.5 px-3.5 py-2.5", className)}>
+      <span
+        className="mt-[7px] h-1 w-1 shrink-0 rotate-45"
+        style={{ background: "var(--accent)" }}
+      />
+      <span className="text-[13.5px] leading-[1.55] text-[var(--color-navy-800)]">
+        <span
+          className="mr-2 align-[1px] text-[10.5px] font-semibold uppercase tracking-[0.16em]"
+          style={{ color: "var(--accent)" }}
+        >
+          Why now
+        </span>
         {children}
       </span>
-    </p>
+    </div>
   );
 }
 
-/** Opportunity score — a serif figure with an expandable component breakdown (spec §137). */
+/** Opportunity score — a serif figure with a component breakdown (spec §137). */
 export function OpportunityScore({
   score,
   breakdown,
@@ -63,26 +66,26 @@ export function OpportunityScore({
 }) {
   const value = score ?? 0;
   const tone = value >= 75 ? "high" : value >= 55 ? "medium" : "neutral";
-  const px = size === "lg" ? "2.6rem" : size === "sm" ? "1.4rem" : "2rem";
+  const px = size === "lg" ? "2.4rem" : size === "sm" ? "1.35rem" : "1.9rem";
+  const scoreColor =
+    tone === "high"
+      ? "var(--color-navy-800)"
+      : tone === "medium"
+        ? "var(--color-blue-600)"
+        : "var(--color-ink-500)";
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex items-baseline gap-1.5">
-        <span
-          className="tnum font-medium leading-none"
-          style={{ fontFamily: "var(--font-serif)", fontSize: px, letterSpacing: "-0.01em" }}
-        >
-          {value}
-        </span>
-        <span className="text-[11px] text-[var(--faint)]">/100</span>
-      </div>
+      <span
+        className="tnum font-medium leading-none"
+        style={{ fontFamily: "var(--font-serif)", fontSize: px, letterSpacing: "-0.02em", color: scoreColor }}
+      >
+        {value}
+      </span>
       <div className="flex items-center gap-2">
-        <span className="eyebrow">Opportunity</span>
-        {tone === "high" ? (
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-priority-high)]">
-            High
-          </span>
-        ) : null}
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]">
+          {tone === "high" ? "High priority" : "Opportunity"}
+        </span>
       </div>
       {breakdown ? <ScoreBreakdown breakdown={breakdown} /> : null}
     </div>
@@ -113,26 +116,32 @@ export function ScoreBreakdown({ breakdown }: { breakdown: Record<string, number
   const rows = Object.keys(COMPONENT_MAX).filter((k) => k in breakdown);
   if (!rows.length) return null;
   return (
-    <div className="mt-2 flex w-[220px] flex-col gap-[5px]">
+    <div className="mt-2.5 flex w-[236px] flex-col gap-1.5">
       {rows.map((key) => {
         const val = breakdown[key] ?? 0;
         const max = COMPONENT_MAX[key];
         return (
-          <div key={key} className="flex items-center gap-2 text-[11px]">
+          <div key={key} className="flex items-center gap-3 text-[11px]">
             <span className="w-[92px] shrink-0 text-left text-[var(--muted)]">
               {COMPONENT_LABEL[key]}
             </span>
             <span
-              className="h-[3px] flex-1 overflow-hidden rounded-full"
-              style={{ background: "color-mix(in oklab, var(--fg) 8%, transparent)" }}
+              className="h-[5px] flex-1 overflow-hidden rounded"
+              style={{ background: "#edf1fa" }}
             >
               <span
-                className="block h-full rounded-full"
-                style={{ width: `${(val / max) * 100}%`, background: "var(--accent)" }}
+                className="grow-bar block h-full rounded"
+                style={{
+                  width: `${(val / max) * 100}%`,
+                  background: "linear-gradient(90deg,#3a6ee0,#1b4fd8)",
+                }}
               />
             </span>
-            <span className="tnum w-8 shrink-0 text-right text-[var(--faint)]">
-              {val}/{max}
+            <span
+              className="w-8 shrink-0 text-right text-[var(--fg)]"
+              style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}
+            >
+              {val}
             </span>
           </div>
         );

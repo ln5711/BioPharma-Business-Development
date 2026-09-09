@@ -1,18 +1,22 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-/** A surface, when a surface is warranted — not everything needs one (spec §130). */
+/** A white surface with a hairline border; add `lift` for a hover raise. */
 export function Card({
   className,
+  lift,
   children,
 }: {
   className?: string;
+  lift?: boolean;
   children: ReactNode;
 }) {
-  return <div className={cn("card fade-in", className)}>{children}</div>;
+  return (
+    <div className={cn("card fade-in", lift && "card-lift", className)}>{children}</div>
+  );
 }
 
-/** Editorial page masthead: kicker · serif title · standfirst, closed by a rule. */
+/** Page masthead: eyebrow · serif title · standfirst, closed by a hairline. */
 export function PageHeader({
   eyebrow,
   title,
@@ -25,13 +29,19 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-8 border-b pb-5">
-      <div className="flex items-end justify-between gap-8">
+    <div className="mb-7">
+      <div className="flex flex-wrap items-start justify-between gap-6">
         <div className="min-w-0">
-          {eyebrow ? <div className="eyebrow mb-2">{eyebrow}</div> : null}
-          <h1 className="display-lg">{title}</h1>
+          {eyebrow ? (
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--faint)]">
+              {eyebrow}
+            </div>
+          ) : null}
+          <h1 className="display-lg mt-3">{title}</h1>
           {description ? (
-            <p className="meta mt-2.5 max-w-[52ch] leading-relaxed">{description}</p>
+            <p className="mt-3 max-w-[64ch] text-[14.5px] leading-[1.6] text-[var(--muted)]">
+              {description}
+            </p>
           ) : null}
         </div>
         {actions ? <div className="flex shrink-0 gap-2">{actions}</div> : null}
@@ -49,9 +59,11 @@ export function SectionHeading({
   aside?: ReactNode;
 }) {
   return (
-    <div className="mb-4 flex items-baseline justify-between">
-      <h2 className="eyebrow">{children}</h2>
-      {aside ? <div className="meta">{aside}</div> : null}
+    <div className="mb-4 flex items-end justify-between gap-4 border-b pb-3">
+      <h2 className="text-[11.5px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+        {children}
+      </h2>
+      {aside ? <div className="text-[12.5px] text-[var(--accent)]">{aside}</div> : null}
     </div>
   );
 }
@@ -59,40 +71,68 @@ export function SectionHeading({
 export function Stat({
   value,
   label,
+  delta,
+  width,
   tone = "default",
 }: {
   value: ReactNode;
   label: string;
+  delta?: string;
+  /** 0–100 bar fill; omit to hide the bar. */
+  width?: number;
   tone?: "default" | "accent";
 }) {
+  const color = tone === "accent" ? "var(--accent)" : "var(--fg)";
   return (
     <div>
-      <div
-        className="metric-number"
-        style={tone === "accent" ? { color: "var(--accent)" } : undefined}
-      >
-        {value}
+      <div className="flex items-baseline gap-[7px]">
+        <span
+          className="tnum"
+          style={{
+            fontFamily: "var(--font-serif)",
+            fontSize: "2rem",
+            fontWeight: 500,
+            letterSpacing: "-0.02em",
+            color,
+          }}
+        >
+          {value}
+        </span>
+        {delta ? (
+          <span className="text-[12px] font-semibold text-[var(--color-positive)]">
+            {delta}
+          </span>
+        ) : null}
       </div>
-      <div className="eyebrow mt-1.5">{label}</div>
+      <div className="mt-1 text-[12.5px] text-[var(--muted)]">{label}</div>
+      {width != null ? (
+        <div className="mt-2.5 h-[3px] overflow-hidden rounded" style={{ background: "#e3eaf7" }}>
+          <span
+            className="grow-bar block h-full rounded"
+            style={{ width: `${width}%`, background: color }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-/** "By the numbers" strip — figures separated by hairlines, journal-style. */
+/** Stat rail — auto-fit grid, each with an animated fill bar. */
 export function StatRail({
   items,
 }: {
-  items: { value: ReactNode; label: string; tone?: "default" | "accent" }[];
+  items: {
+    value: ReactNode;
+    label: string;
+    delta?: string;
+    width?: number;
+    tone?: "default" | "accent";
+  }[];
 }) {
   return (
-    <div className="flex flex-wrap items-stretch">
-      {items.map((it, i) => (
-        <div
-          key={it.label}
-          className={cn("pr-8", i > 0 && "border-l pl-8")}
-        >
-          <Stat value={it.value} label={it.label} tone={it.tone} />
-        </div>
+    <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+      {items.map((it) => (
+        <Stat key={it.label} {...it} />
       ))}
     </div>
   );
@@ -107,12 +147,19 @@ export function EmptyState({
   body: string;
   action?: ReactNode;
 }) {
-  // States what the system can do — never "Nothing here yet!" (spec §150).
   return (
-    <div className="border-l-2 py-1 pl-5" style={{ borderColor: "var(--hairline)" }}>
-      <div className="display-md mb-2">{title}</div>
+    <div
+      className="flex flex-col items-start gap-3.5 rounded-[14px] border border-dashed p-8"
+      style={{ borderColor: "#cfdbee", background: "var(--panel)" }}
+    >
+      <div className="flex gap-1.5">
+        <span className="h-[9px] w-[9px] rounded-full" style={{ background: "var(--accent)" }} />
+        <span className="h-[9px] w-[9px] rounded-full" style={{ background: "var(--color-sky-300)" }} />
+        <span className="h-[9px] w-[9px] rounded-full" style={{ background: "#dce6f6" }} />
+      </div>
+      <div className="display-md">{title}</div>
       <p className="meta max-w-[54ch] leading-relaxed">{body}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
+      {action ? <div className="mt-1">{action}</div> : null}
     </div>
   );
 }
@@ -127,33 +174,37 @@ export function Divider({ label }: { label?: string }) {
   );
 }
 
-const TONE_CLASS: Record<string, string> = {
-  high: "text-[var(--color-priority-high)] border-[color-mix(in_oklab,var(--color-priority-high)_30%,transparent)]",
-  medium: "text-[var(--color-priority-medium)] border-[color-mix(in_oklab,var(--color-priority-medium)_35%,transparent)]",
-  positive: "text-[var(--color-positive)] border-[color-mix(in_oklab,var(--color-positive)_30%,transparent)]",
-  warning: "text-[var(--color-warning)] border-[color-mix(in_oklab,var(--color-warning)_30%,transparent)]",
-  critical: "text-[var(--color-critical)] border-[color-mix(in_oklab,var(--color-critical)_30%,transparent)]",
-  info: "text-[var(--color-info)] border-[color-mix(in_oklab,var(--color-info)_30%,transparent)]",
-  neutral: "text-[var(--muted)] border-[var(--hairline)]",
+const TONE_STYLE: Record<
+  string,
+  { color: string; bg: string; border: string }
+> = {
+  high: { color: "var(--color-navy-800)", bg: "var(--color-sky-100)", border: "#d3e0fa" },
+  medium: { color: "var(--color-blue-600)", bg: "var(--color-sky-50)", border: "#dbe6fb" },
+  positive: { color: "var(--color-positive)", bg: "var(--color-teal-100)", border: "#cfe6e2" },
+  warning: { color: "var(--color-warning)", bg: "#fbf1dc", border: "#efdcb0" },
+  critical: { color: "var(--color-critical)", bg: "#fbe6e2", border: "#f2c9c0" },
+  info: { color: "var(--color-navy-800)", bg: "var(--color-sky-100)", border: "#d3e0fa" },
+  neutral: { color: "var(--muted)", bg: "var(--panel-2)", border: "var(--hairline)" },
 };
 
-/** Understated label chip — thin outline, no fill (spec §154). */
+/** Small label chip — tinted fill + hairline border. */
 export function Pill({
   children,
   tone = "neutral",
   className,
 }: {
   children: ReactNode;
-  tone?: keyof typeof TONE_CLASS;
+  tone?: keyof typeof TONE_STYLE;
   className?: string;
 }) {
+  const s = TONE_STYLE[tone];
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-[var(--radius-sm)] border px-1.5 py-[1px] text-[10.5px] font-medium tracking-wide",
-        TONE_CLASS[tone],
+        "inline-flex items-center gap-1 rounded-[5px] border px-2 py-[2px] text-[10.5px] font-medium tracking-wide",
         className,
       )}
+      style={{ color: s.color, background: s.bg, borderColor: s.border }}
     >
       {children}
     </span>
