@@ -65,11 +65,11 @@ export function SectionHeading({
   return (
     <div
       className="mb-4 flex items-end justify-between gap-4 border-b pb-[11px]"
-      style={{ borderColor: "rgba(150,185,255,.12)" }}
+      style={{ borderColor: "var(--hairline)" }}
     >
       <h2
         className="text-[10.5px] font-semibold uppercase"
-        style={{ letterSpacing: ".24em", color: "#B7BFD8", fontFamily: "var(--font-mono)" }}
+        style={{ letterSpacing: ".24em", color: "var(--muted)", fontFamily: "var(--font-mono)" }}
       >
         {children}
       </h2>
@@ -160,13 +160,13 @@ export function Divider({ label }: { label?: string }) {
 }
 
 const TONE_STYLE: Record<string, { color: string; bg: string }> = {
-  high: { color: "#8FD3FF", bg: "rgba(143,211,255,.1)" },
-  medium: { color: "#7FA6F0", bg: "rgba(127,166,240,.1)" },
-  positive: { color: "#A8E6C9", bg: "rgba(110,224,184,.12)" },
-  warning: { color: "#F3C9A8", bg: "rgba(240,166,106,.14)" },
-  critical: { color: "#F3B4A8", bg: "rgba(240,134,106,.14)" },
-  info: { color: "#8FD3FF", bg: "rgba(143,211,255,.1)" },
-  neutral: { color: "var(--muted)", bg: "rgba(150,185,255,.07)" },
+  high: { color: "var(--accent)", bg: "var(--accent-tint)" },
+  medium: { color: "var(--priority-medium, #7FA6F0)", bg: "var(--accent-tint)" },
+  positive: { color: "var(--success)", bg: "var(--success-bg)" },
+  warning: { color: "var(--warn)", bg: "var(--warn-bg)" },
+  critical: { color: "var(--danger)", bg: "var(--danger-bg)" },
+  info: { color: "var(--accent)", bg: "var(--accent-tint)" },
+  neutral: { color: "var(--muted)", bg: "var(--panel-2)" },
 };
 
 /** Small label chip — tinted fill, no border. */

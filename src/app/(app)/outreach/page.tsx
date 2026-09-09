@@ -7,7 +7,7 @@ import { getUserPrefs, RANGE_MS } from "@/lib/user-prefs";
 import { getRecommendations } from "@/lib/recommendations/engine";
 import { PageHeader } from "@/components/ui/primitives";
 import { formatRelativeDays } from "@/lib/utils";
-import { logOutreach } from "./actions";
+import { LogOutreachForm } from "./log-outreach-form";
 
 export const dynamic = "force-dynamic";
 
@@ -38,15 +38,15 @@ export default async function OutreachPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Composer & log"
+        eyebrow="Log & follow-ups"
         title="Outreach"
-        description="Recommended outreach, drafts, what you've logged, and follow-ups — connected back to the signal, account and people that produced each one."
+        description="Where you record outreach you've already sent and track the follow-ups it created. newwin does not send messages — no email, drip or CRM integration is connected."
       />
 
       <section className="mb-9">
-        <SectionLabel>Recommended</SectionLabel>
+        <SectionLabel>Suggested next</SectionLabel>
         {outreachRecs.length === 0 ? (
-          <p className="mt-3 text-[13px] text-[var(--muted)]">No outreach recommended right now.</p>
+          <p className="mt-3 text-[13px] text-secondary">No outreach suggested right now.</p>
         ) : (
           <div className="mt-3 flex flex-col gap-2.5">
             {outreachRecs.map((r) => (
@@ -55,10 +55,10 @@ export default async function OutreachPage() {
                 className="card flex flex-wrap items-center justify-between gap-3 p-4"
               >
                 <div className="min-w-0">
-                  <div className="text-[14px] text-[var(--fg)]" style={{ fontFamily: "var(--font-serif)" }}>
+                  <div className="text-[14px] text-primary" style={{ fontFamily: "var(--font-serif)" }}>
                     {r.title}
                   </div>
-                  <div className="mt-1 max-w-[70ch] text-[12.5px] text-[var(--muted)]">{r.reason}</div>
+                  <div className="mt-1 max-w-[70ch] text-[12.5px] text-secondary">{r.reason}</div>
                 </div>
                 <Link
                   href={r.action.href}
@@ -74,47 +74,30 @@ export default async function OutreachPage() {
       </section>
 
       <section className="mb-9">
-        <SectionLabel>Log outreach</SectionLabel>
-        <form action={logOutreach} className="panel-glass mt-3 grid gap-3 p-5 sm:grid-cols-2">
-          <input name="contact" placeholder="Contact name" className={input} />
-          <input name="account" placeholder="Target account (company)" className={input} />
-          <input name="subject" placeholder="Subject" className={`${input} sm:col-span-2`} />
-          <textarea name="body" rows={3} placeholder="Message or note…" className={`${input} sm:col-span-2 resize-none`} />
-          <div className="flex items-center gap-2 sm:col-span-2">
-            <select name="channel" className={input + " max-w-[140px]"} defaultValue="email">
-              <option value="email">Email</option>
-              <option value="call">Call</option>
-              <option value="linkedin">LinkedIn</option>
-            </select>
-            <button
-              type="submit"
-              className="rounded-[10px] px-4 py-2.5 text-[12.5px] font-semibold"
-              style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }}
-            >
-              Log as sent
-            </button>
-          </div>
-        </form>
+        <SectionLabel>Log outreach you&rsquo;ve already sent</SectionLabel>
+        <LogOutreachForm />
       </section>
 
       <section>
         <SectionLabel>Logged</SectionLabel>
         {logged.length === 0 ? (
-          <p className="mt-3 text-[13px] text-[var(--muted)]">Nothing logged yet.</p>
+          <p className="mt-3 text-[13px] text-secondary">Nothing logged yet.</p>
         ) : (
           <div className="mt-3 flex flex-col">
             {logged.map(({ i, org }) => (
               <div
                 key={i.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b py-3"
-                style={{ borderColor: "rgba(150,185,255,.09)" }}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-default py-3"
               >
                 <div className="min-w-0">
-                  <span className="text-[13.5px] text-[var(--fg)]">{i.subject}</span>
-                  {org ? <span className="ml-2 text-[12px] text-[var(--muted)]">{org}</span> : null}
+                  <span className="text-[13.5px] text-primary">{i.subject}</span>
+                  {org ? <span className="ml-2 text-[12px] text-secondary">{org}</span> : null}
                 </div>
-                <span className="text-[11.5px] text-[var(--faint)]" style={{ fontFamily: "var(--font-mono)" }}>
-                  {i.type.replace(/_/g, " ")} · {formatRelativeDays(i.occurredAt)}
+                <span
+                  className="text-[11.5px] text-tertiary"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {i.type.replace(/_/g, " ")} · logged {formatRelativeDays(i.occurredAt)}
                 </span>
               </div>
             ))}
@@ -125,14 +108,11 @@ export default async function OutreachPage() {
   );
 }
 
-const input =
-  "w-full rounded-[10px] border border-[rgba(150,185,255,.16)] bg-[rgba(10,8,22,.5)] px-3 py-2.5 text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--accent-border)]";
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <h2
-      className="text-[10.5px] uppercase"
-      style={{ letterSpacing: ".22em", color: "#B7BFD8", fontFamily: "var(--font-mono)", fontWeight: 600 }}
+      className="text-[10.5px] font-semibold uppercase tracking-[0.22em] text-secondary"
+      style={{ fontFamily: "var(--font-mono)" }}
     >
       {children}
     </h2>

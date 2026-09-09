@@ -38,7 +38,7 @@ export function Sidebar({ userName }: { userName: string }) {
 
   return (
     <nav
-      className="hidden shrink-0 flex-col border-r py-[22px] md:flex"
+      className="dark-scope hidden shrink-0 flex-col border-r py-[22px] md:flex"
       style={{
         width: open ? "230px" : "70px",
         background: "var(--nav-glass)",

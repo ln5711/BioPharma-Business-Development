@@ -1,58 +1,33 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { ArrowRight, Plus, X } from "lucide-react";
 import { PulsarMark } from "@/components/brand/pulsar-mark";
+import { PulsarIntro } from "@/components/brand/pulsar-intro";
 import { RECOMMENDED_PRIORITIES } from "@/lib/priorities";
 import { createAccount, signIn, type AuthResult } from "./actions";
 
-type Phase = "intro" | "leaving" | "form";
+type Phase = "intro" | "form";
 type Mode = "create" | "signin";
 
-export function WelcomeFlow() {
+export function WelcomeFlow({ replayIntro = false }: { replayIntro?: boolean }) {
   const [phase, setPhase] = useState<Phase>("intro");
   const [mode, setMode] = useState<Mode>("create");
 
-  useEffect(() => {
-    if (phase !== "intro") return;
-    const t = setTimeout(() => setPhase("leaving"), 2100);
-    return () => clearTimeout(t);
-  }, [phase]);
-  useEffect(() => {
-    if (phase !== "leaving") return;
-    const t = setTimeout(() => setPhase("form"), 640);
-    return () => clearTimeout(t);
-  }, [phase]);
-
-  if (phase !== "form") {
+  // The animated entrance is purely presentational. It hands control to the form
+  // via onDone (timer, Skip button, reduced-motion, or a hard failsafe) and can
+  // never block reaching signup / sign-in.
+  if (phase === "intro") {
     return (
-      <div className="pulsar-shell grid min-h-dvh place-items-center px-6" style={{ color: "#F1F6FF" }}>
-        <div
-          className={phase === "leaving" ? "fade-slide-up" : "fade-slide-in"}
-          style={{ textAlign: "center" }}
-        >
-          <div className="flex justify-center">
-            <PulsarMark size={128} />
-          </div>
-          <div
-            className="mt-6"
-            style={{ fontFamily: "var(--font-serif)", fontWeight: 300, fontSize: "clamp(30px,4vw,44px)", letterSpacing: ".04em" }}
-          >
-            newwin
-          </div>
-          <div
-            className="mt-3 text-[11px] uppercase"
-            style={{ letterSpacing: ".3em", color: "#9AA3C0", fontFamily: "var(--font-mono)" }}
-          >
-            Signal intelligence for oncology BD
-          </div>
-        </div>
+      <div className="dark-scope">
+        <div className="pulsar-shell min-h-dvh" aria-hidden />
+        <PulsarIntro forceReplay={replayIntro} onDone={() => setPhase("form")} />
       </div>
     );
   }
 
   return (
-    <div className="pulsar-shell relative min-h-dvh overflow-y-auto">
+    <div className="dark-scope pulsar-shell relative min-h-dvh overflow-y-auto">
       <div className="absolute left-7 top-7 flex items-center gap-2.5">
         <PulsarMark size={28} />
         <span className="text-[19px] text-[#EDF2FF]" style={{ fontFamily: "var(--font-serif)", letterSpacing: ".03em" }}>
@@ -125,6 +100,9 @@ function CreateForm({ onSignIn }: { onSignIn: () => void }) {
       {customs.map((c) => (
         <input key={c} type="hidden" name="customPriorities" value={c} />
       ))}
+      {/* A priority typed but not yet added with "+" is still submitted. */}
+      <input type="hidden" name="customDraft" value={draft} />
+
 
       <div className="flex items-center justify-between gap-3">
         <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".26em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}>

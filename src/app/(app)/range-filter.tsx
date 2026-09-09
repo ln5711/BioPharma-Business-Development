@@ -34,7 +34,7 @@ export function RangeFilter({ value }: { value: string }) {
             className="rounded-full px-3 py-1.5 text-[12px] transition-colors"
             style={{
               background: on ? "rgba(143,211,255,.16)" : "transparent",
-              color: on ? "#DDF1FF" : "var(--muted)",
+              color: on ? "var(--accent-strong)" : "var(--muted)",
               fontWeight: on ? 600 : 400,
             }}
           >

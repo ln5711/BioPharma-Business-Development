@@ -56,7 +56,7 @@ export function Tr({ children }: { children: ReactNode }) {
   return (
     <tr
       className="border-b transition-colors last:border-0 hover:bg-[rgba(150,185,255,.04)]"
-      style={{ borderColor: "rgba(150,185,255,.09)" }}
+      style={{ borderColor: "var(--hairline)" }}
     >
       {children}
     </tr>

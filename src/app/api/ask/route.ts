@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, gte, ilike, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, ne, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   commercialSignals,
@@ -8,7 +8,7 @@ import {
   trialChanges,
   trials,
 } from "@/db/schema";
-import { getActiveTenant } from "@/lib/tenant";
+import { getOptionalAuth } from "@/lib/tenant";
 import { getUserPrefs, RANGE_MS } from "@/lib/user-prefs";
 import { getRecommendations } from "@/lib/recommendations/engine";
 
@@ -35,7 +35,11 @@ export async function POST(req: Request) {
   const query = String(q).trim();
   if (!query) return NextResponse.json({ answer: "Ask me anything about your territory.", cards: [] });
 
-  const { tenant, user } = await getActiveTenant();
+  const auth = await getOptionalAuth();
+  if (!auth) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+  const { tenant, user } = auth;
   const db = await getDb();
   const lower = query.toLowerCase();
 
@@ -45,10 +49,12 @@ export async function POST(req: Request) {
   const acctMatch = /\/accounts\/([0-9a-f-]{36})/.exec(path ?? "");
   const trialMatch = /\/trials\/(NCT\d{8})/i.exec(path ?? "");
   if (acctMatch) {
+    // Scope the account-context lookup to the caller's tenant — never resolve an
+    // organization by id alone.
     const [o] = await db
       .select({ id: organizations.id, name: organizations.canonicalName })
       .from(organizations)
-      .where(eq(organizations.id, acctMatch[1]))
+      .where(and(eq(organizations.id, acctMatch[1]), eq(organizations.tenantId, tenant.id)))
       .limit(1);
     if (o) contextOrg = o;
   }
@@ -142,15 +148,28 @@ export async function POST(req: Request) {
   }
 
   // ── intent: trials changed ───────────────────────────────────────────
-  if (/trial.*(chang|amend|updat)|what trials/.test(lower)) {
+  if (/trial.*(chang|amend|updat)|what trials/.test(lower) || contextTrial) {
     const rows = await db
       .select({ c: trialChanges, nct: trials.nctId, title: trials.title })
       .from(trialChanges)
       .leftJoin(trials, eq(trials.id, trialChanges.trialId))
-      .where(and(eq(trialChanges.tenantId, tenant.id), gte(trialChanges.detectedAt, new Date(Date.now() - 7 * 864e5))))
+      .where(
+        and(
+          eq(trialChanges.tenantId, tenant.id),
+          gte(trialChanges.detectedAt, new Date(Date.now() - 7 * 864e5)),
+          // On a trial page, scope to that trial.
+          ...(contextTrial ? [eq(trials.nctId, contextTrial)] : []),
+        ),
+      )
       .orderBy(desc(trialChanges.commercialRelevance))
       .limit(5);
-    answer = rows.length ? "Trial changes in the last 7 days:" : "No trial changes recorded in the last 7 days.";
+    answer = rows.length
+      ? contextTrial
+        ? `Recent changes on ${contextTrial}:`
+        : "Trial changes in the last 7 days:"
+      : contextTrial
+        ? `No changes recorded on ${contextTrial} in the last 7 days.`
+        : "No trial changes recorded in the last 7 days.";
     for (const r of rows) {
       if (!r.nct) continue;
       cards.push({

@@ -65,7 +65,7 @@ export function AskBar({ variant }: { variant: "home" | "header" }) {
             run(q);
           }}
           className="flex items-center gap-2.5 rounded-[11px] border px-3 py-2.5 transition-colors focus-within:border-[var(--accent-border)]"
-          style={{ background: "rgba(150,185,255,.06)", borderColor: "rgba(150,185,255,.14)" }}
+          style={{ background: "var(--panel-2)", borderColor: "var(--hairline)" }}
         >
           <Sparkles size={14} className="text-[var(--accent)]" />
           <input
@@ -121,7 +121,7 @@ export function AskBar({ variant }: { variant: "home" | "header" }) {
               run(s);
             }}
             className="rounded-full border px-3 py-1.5 text-[12px] text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
-            style={{ borderColor: "rgba(150,185,255,.16)" }}
+            style={{ borderColor: "var(--card-border)" }}
           >
             {s}
           </button>
@@ -169,7 +169,7 @@ function ResultPanel({
                   <div
                     key={i}
                     className="rounded-[12px] border p-3.5"
-                    style={{ borderColor: "var(--card-border)", background: "rgba(150,185,255,.04)" }}
+                    style={{ borderColor: "var(--card-border)", background: "var(--panel)" }}
                   >
                     <div
                       className="text-[10px] uppercase"
@@ -198,7 +198,7 @@ function ResultPanel({
                           href={a.href}
                           onClick={onClose}
                           className="rounded-[8px] border px-3 py-1.5 text-[12px] transition-colors"
-                          style={{ borderColor: "rgba(143,211,255,.3)", background: "rgba(143,211,255,.1)", color: "#CDE9FF" }}
+                          style={{ borderColor: "var(--accent-border)", background: "var(--accent-tint)", color: "var(--accent)" }}
                         >
                           {a.label}
                         </Link>

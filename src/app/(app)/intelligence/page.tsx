@@ -43,7 +43,7 @@ export default async function IntelligencePage({
               style={{
                 borderColor: on ? "rgba(143,211,255,.5)" : "rgba(150,185,255,.16)",
                 background: on ? "rgba(143,211,255,.14)" : "transparent",
-                color: on ? "#DDF1FF" : "var(--muted)",
+                color: on ? "var(--accent-strong)" : "var(--muted)",
               }}
             >
               {f.label}

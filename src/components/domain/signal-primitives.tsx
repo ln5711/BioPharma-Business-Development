@@ -7,7 +7,7 @@ export function SignalBadge({ signalType }: { signalType: string }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-[4px] px-2 py-[2px] text-[11px]"
-      style={{ color: "#8FD3FF", background: "rgba(143,211,255,.1)" }}
+      style={{ color: "var(--accent)", background: "var(--accent-tint)" }}
     >
       {meta.label}
     </span>
@@ -25,7 +25,7 @@ export function WhyNow({ children, className }: { children: string; className?: 
       <span className="text-[13px] leading-[1.55] text-[var(--muted)]">
         <span
           className="mr-2 text-[10px] uppercase"
-          style={{ letterSpacing: ".18em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}
+          style={{ letterSpacing: ".18em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}
         >
           Why now
         </span>
@@ -49,7 +49,7 @@ export function OpportunityScore({
   const tone = value >= 85 ? "high" : value >= 60 ? "medium" : "neutral";
   const px = size === "lg" ? "2.25rem" : size === "sm" ? "1.35rem" : "1.65rem";
   const color =
-    tone === "high" ? "#8FD3FF" : tone === "medium" ? "#B7BFD8" : "var(--faint)";
+    tone === "high" ? "var(--accent)" : tone === "medium" ? "var(--muted)" : "var(--faint)";
 
   return (
     <div className="flex flex-col items-end gap-1">

@@ -12,7 +12,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="flex shrink-0 border-t px-1.5 pb-2.5 pt-2 md:hidden"
+      className="dark-scope flex shrink-0 border-t px-1.5 pb-2.5 pt-2 md:hidden"
       style={{ background: "rgba(10,8,22,.9)", borderColor: "var(--hairline)", backdropFilter: "blur(14px)" }}
     >
       {BOTTOM_NAV.map((item) => {

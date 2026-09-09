@@ -24,14 +24,14 @@ export function OpportunityCard({ signal }: { signal: SignalRow; index?: number 
   return (
     <article
       className="fade-in border-b py-5 transition-colors hover:bg-[rgba(150,185,255,.03)]"
-      style={{ borderColor: "rgba(150,185,255,.09)" }}
+      style={{ borderColor: "var(--hairline)" }}
     >
       <div className="flex flex-wrap items-start gap-[18px]">
         <div className="min-w-0 flex-1 basis-[320px]">
           <div className="flex flex-wrap items-center gap-2.5">
             <span
               className="text-[10.5px] font-semibold uppercase"
-              style={{ letterSpacing: ".18em", color: "#B7BFD8" }}
+              style={{ letterSpacing: ".18em", color: "var(--muted)" }}
             >
               {signal.organizationName ?? "Unresolved sponsor"}
             </span>
@@ -49,7 +49,7 @@ export function OpportunityCard({ signal }: { signal: SignalRow; index?: number 
 
           <h3
             className="mt-2 text-[17.5px] leading-[1.34]"
-            style={{ fontFamily: "var(--font-serif)", fontWeight: 400, color: "#EDF1FC" }}
+            style={{ fontFamily: "var(--font-serif)", fontWeight: 400, color: "var(--fg)" }}
           >
             <Link href={href} className="hover:text-[var(--accent)]">
               {signal.headline}
@@ -86,7 +86,7 @@ export function OpportunityCard({ signal }: { signal: SignalRow; index?: number 
             style={{
               borderColor: "rgba(150,185,255,.16)",
               background: "rgba(150,185,255,.05)",
-              color: "#CDD5EC",
+              color: "var(--body)",
             }}
           >
             Draft

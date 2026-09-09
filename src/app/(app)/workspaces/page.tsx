@@ -36,20 +36,20 @@ export default async function WorkspacesPage() {
         action={createWorkspace}
         className="panel-glass mb-8 flex flex-col gap-3 p-5"
       >
-        <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".22em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}>
+        <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".22em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
           New workspace — what are you working on?
         </div>
         <input
           name="objective"
           placeholder="e.g. Prepare a presentation for Novartis today"
           maxLength={280}
-          className="rounded-[11px] border border-[rgba(150,185,255,.16)] bg-[rgba(10,8,22,.5)] px-3.5 py-3 text-[14px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--accent-border)]"
+          className="rounded-[11px] border border-[var(--input-border)] bg-[var(--input-bg)] px-3.5 py-3 text-[14px] text-[var(--fg)] outline-none placeholder:text-[var(--placeholder)] focus:border-[var(--accent-border)]"
         />
         <div className="flex flex-wrap items-center gap-2">
           <select
             name="template"
             defaultValue="account_research"
-            className="rounded-[10px] border border-[rgba(150,185,255,.16)] bg-[rgba(10,8,22,.5)] px-3 py-2.5 text-[12.5px] text-[var(--fg)] outline-none"
+            className="rounded-[10px] border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2.5 text-[12.5px] text-[var(--fg)] outline-none"
           >
             {Object.entries(TEMPLATE_META).map(([id, m]) => (
               <option key={id} value={id}>
@@ -73,10 +73,10 @@ export default async function WorkspacesPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map(({ w, total, done }) => (
             <Link key={w.id} href={`/workspaces/${w.id}`} className="card card-lift block p-5">
-              <div className="text-[10px] uppercase" style={{ letterSpacing: ".16em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}>
+              <div className="text-[10px] uppercase" style={{ letterSpacing: ".16em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
                 {TEMPLATE_META[w.template as keyof typeof TEMPLATE_META]?.label ?? w.template}
               </div>
-              <div className="mt-2 text-[15.5px]" style={{ fontFamily: "var(--font-serif)", color: "#EDF1FC" }}>
+              <div className="mt-2 text-[15.5px]" style={{ fontFamily: "var(--font-serif)", color: "var(--fg)" }}>
                 {w.title}
               </div>
               <div className="mt-3 flex items-center gap-2 text-[11.5px] text-[var(--faint)]" style={{ fontFamily: "var(--font-mono)" }}>

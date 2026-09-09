@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Instrument_Sans, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
+import { ThemeInit } from "@/components/theme/theme-init";
+import { getThemeCookie } from "@/lib/theme-actions";
+import { resolveForSSR } from "@/lib/theme";
 
 const sans = Instrument_Sans({
   subsets: ["latin"],
@@ -30,15 +33,20 @@ export const metadata: Metadata = {
     "Signal intelligence for oncology business development — every trial amendment, publication, personnel move and financing event, deduplicated, scored and sequenced.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const themeChoice = await getThemeCookie();
   return (
     <html
       lang="en"
+      data-theme={resolveForSSR(themeChoice)}
       className={`${sans.variable} ${serif.variable} ${mono.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <ThemeInit />
+      </head>
       <body>{children}</body>
     </html>
   );

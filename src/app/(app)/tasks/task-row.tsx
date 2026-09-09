@@ -23,7 +23,7 @@ export function TaskRow({ task }: { task: Task }) {
         className={cn(
           "mt-[1px] grid h-[18px] w-[18px] shrink-0 place-items-center rounded-[4px] border transition-colors",
           task.done
-            ? "border-transparent text-[#06101F]"
+            ? "border-transparent text-[var(--accent-btn-ink)]"
             : "border-[var(--faint)] text-transparent hover:border-[var(--accent)]",
         )}
         style={
