@@ -42,11 +42,11 @@
   --color-teal-100: rgba(110, 224, 184, 0.13);
   --color-teal-50: rgba(110, 224, 184, 0.08);
 
-  /* Text ramp (dark) */
-  --color-ink-900: #f2f6ff;
-  --color-ink-700: #c3cadf;
-  --color-ink-500: #9aa3c0;
-  --color-ink-400: #7e8cb8;
+  /* Text ramp (dark) — raised for legibility on the dark ground */
+  --color-ink-900: #f4f7ff;
+  --color-ink-700: #cdd4e8;
+  --color-ink-500: #aeb6d0;
+  --color-ink-400: #949dbe;
   --color-canvas: #07050f;
   --color-paper: rgba(150, 180, 255, 0.045);
   --color-paper-2: rgba(150, 185, 255, 0.09);
@@ -72,17 +72,17 @@
   --shell-b: radial-gradient(60% 50% at 78% 88%, rgba(64, 96, 190, 0.2) 0%, rgba(7, 5, 15, 0) 70%);
 
   --bg: #07050f;
-  --fg: #f2f6ff;
-  --body: #c3cadf;
-  --muted: #9aa3c0;
-  --faint: #7e8cb8;
-  --dim: #6b7398;
+  --fg: #f4f7ff;
+  --body: #cdd4e8;
+  --muted: #aeb6d0;
+  --faint: #949dbe;
+  --dim: #7f88a8;
 
-  --panel: rgba(150, 180, 255, 0.045);
-  --panel-2: rgba(150, 185, 255, 0.09);
-  --panel-glass: linear-gradient(158deg, rgba(150, 180, 255, 0.085), rgba(120, 140, 220, 0.025));
-  --hairline: rgba(150, 185, 255, 0.1);
-  --card-border: rgba(150, 185, 255, 0.13);
+  --panel: rgba(150, 180, 255, 0.06);
+  --panel-2: rgba(150, 185, 255, 0.11);
+  --panel-glass: linear-gradient(158deg, rgba(150, 180, 255, 0.1), rgba(120, 140, 220, 0.035));
+  --hairline: rgba(150, 185, 255, 0.13);
+  --card-border: rgba(150, 185, 255, 0.16);
 
   --nav-glass: linear-gradient(180deg, rgba(18, 13, 38, 0.75), rgba(9, 7, 20, 0.75));
   --header-glass: rgba(10, 8, 22, 0.5);
@@ -147,8 +147,8 @@ body {
   background: var(--bg);
   color: var(--body);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -269,7 +269,7 @@ a:hover {
 }
 .meta {
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: 0.84375rem;
   line-height: 1.55;
 }
 .prose-tight {

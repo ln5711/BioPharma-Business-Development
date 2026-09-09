@@ -2,69 +2,158 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { userOnboarding, users } from "@/db/schema";
-import { getActiveTenant } from "@/lib/tenant";
+import {
+  capabilityProfiles,
+  organizationMembers,
+  scoringProfiles,
+  tenants,
+  userPreferences,
+  users,
+} from "@/db/schema";
+import { createSession, hashPassword, verifyPassword } from "@/lib/auth";
+import { buildPriorities } from "@/lib/user-prefs";
+import { DEFAULT_WEIGHTS } from "@/lib/scoring/model";
 
-const schema = z.object({
+export type AuthResult = { ok: true } | { ok: false; error: string };
+
+const slugify = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "workspace";
+
+const createSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
-  position: z.string().trim().min(1, "Role is required").max(160),
-  weeklyAim: z.string().trim().min(1, "Tell us what you're working toward").max(600),
-  goals: z.array(z.string().trim().max(200)).transform((g) => g.filter(Boolean)),
+  email: z.string().trim().toLowerCase().email("Enter a valid work email"),
+  password: z.string().min(8, "Use at least 8 characters").max(200),
+  orgName: z.string().trim().min(1, "Organization name is required").max(160),
+  orgDomain: z.string().trim().max(160).optional().default(""),
+  recommendedIds: z.array(z.string()).default([]),
+  customPriorities: z.array(z.string().trim().max(200)).default([]),
 });
 
-export type OnboardingResult = { ok: true } | { ok: false; error: string };
-
-export async function completeOnboarding(
-  _prev: OnboardingResult | null,
+/** Create the USER + ORGANIZATION/WORKSPACE, link them, store priorities, sign in. */
+export async function createAccount(
+  _prev: AuthResult | null,
   formData: FormData,
-): Promise<OnboardingResult> {
-  const parsed = schema.safeParse({
+): Promise<AuthResult> {
+  const parsed = createSchema.safeParse({
     name: formData.get("name"),
-    position: formData.get("position"),
-    weeklyAim: formData.get("weeklyAim"),
-    goals: [formData.get("goal1"), formData.get("goal2"), formData.get("goal3")].map(
-      (v) => (typeof v === "string" ? v : ""),
-    ),
+    email: formData.get("email"),
+    password: formData.get("password"),
+    orgName: formData.get("orgName"),
+    orgDomain: formData.get("orgDomain") ?? "",
+    recommendedIds: formData.getAll("recommendedIds").map(String),
+    customPriorities: formData.getAll("customPriorities").map(String),
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form" };
+  }
+  const d = parsed.data;
+  const db = await getDb();
+
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, d.email))
+    .limit(1);
+  if (existing) {
+    return { ok: false, error: "An account with that email already exists. Sign in instead." };
   }
 
-  const { tenant, user } = await getActiveTenant();
-  const db = await getDb();
-  const data = parsed.data;
   const now = new Date();
+  const base = slugify(d.orgName);
+  let slug = base;
+  for (let i = 2; i < 50; i++) {
+    const [clash] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
+    if (!clash) break;
+    slug = `${base}-${i}`;
+  }
 
-  await db
-    .insert(userOnboarding)
+  const domain = d.orgDomain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+
+  const [tenant] = await db
+    .insert(tenants)
+    .values({ name: d.orgName, slug, domain: domain || null, website: d.orgDomain || null })
+    .returning();
+
+  const [user] = await db
+    .insert(users)
     .values({
       tenantId: tenant.id,
-      userId: user.id,
-      name: data.name,
-      position: data.position,
-      weeklyAim: data.weeklyAim,
-      goals: data.goals,
-      completedAt: now,
+      email: d.email,
+      name: d.name,
+      role: "owner",
+      passwordHash: hashPassword(d.password),
+      lastLoginAt: now,
     })
-    .onConflictDoUpdate({
-      target: userOnboarding.userId,
-      set: {
-        name: data.name,
-        position: data.position,
-        weeklyAim: data.weeklyAim,
-        goals: data.goals,
-        completedAt: now,
-      },
-    });
+    .returning();
 
-  await db
-    .update(users)
-    .set({ name: data.name, position: data.position })
-    .where(eq(users.id, user.id));
+  await db.insert(organizationMembers).values({
+    tenantId: tenant.id,
+    userId: user.id,
+    role: "owner",
+  });
 
+  await db.insert(userPreferences).values({
+    userId: user.id,
+    tenantId: tenant.id,
+    priorities: buildPriorities(d.recommendedIds, d.customPriorities),
+    onboardedAt: now,
+  });
+
+  // Minimal profile rows so scoring / settings have something to read.
+  await db.insert(capabilityProfiles).values({ tenantId: tenant.id, companyName: d.orgName });
+  await db.insert(scoringProfiles).values({
+    tenantId: tenant.id,
+    name: "Default (balanced)",
+    isDefault: true,
+    weights: DEFAULT_WEIGHTS,
+  });
+
+  await createSession({ userId: user.id, tenantId: tenant.id });
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
+const signInSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+  password: z.string().min(1, "Enter your password"),
+});
+
+export async function signIn(
+  _prev: AuthResult | null,
+  formData: FormData,
+): Promise<AuthResult> {
+  const parsed = signInSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form" };
+  }
+  const db = await getDb();
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, parsed.data.email))
+    .limit(1);
+  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+    return { ok: false, error: "Email or password is incorrect." };
+  }
+
+  const [member] = await db
+    .select({ tenantId: organizationMembers.tenantId })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.userId, user.id))
+    .limit(1);
+
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+  await createSession({ userId: user.id, tenantId: member?.tenantId ?? user.tenantId });
   revalidatePath("/", "layout");
   redirect("/");
 }

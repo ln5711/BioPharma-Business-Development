@@ -76,6 +76,11 @@ const schema = z.object({
   CRON_SECRET: trimmed("dev-only-change-me").transform(
     (v) => v || "dev-only-change-me",
   ),
+
+  // Session cookie signing key. Set a real 32+ char value in production.
+  AUTH_SECRET: trimmed("newwin-dev-session-secret-change-me").transform(
+    (v) => v || "newwin-dev-session-secret-change-me",
+  ),
 });
 
 const raw = {
@@ -90,6 +95,7 @@ const raw = {
   NCBI_API_KEY: process.env.NCBI_API_KEY,
   CROSSREF_MAILTO: process.env.CROSSREF_MAILTO,
   CRON_SECRET: process.env.CRON_SECRET,
+  AUTH_SECRET: process.env.AUTH_SECRET,
 };
 
 export const env = schema.parse(raw);

@@ -1,33 +1,37 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { userOnboarding } from "@/db/schema";
+import { userPreferences } from "@/db/schema";
 import { getActiveTenant } from "@/lib/tenant";
 
 export interface OnboardingStatus {
   tenantId: string;
   userId: string;
   userName: string;
+  authenticated: boolean;
   needsOnboarding: boolean;
 }
 
 /**
- * Whether the active user still needs the first-run welcome flow: no
- * `user_onboarding` row, or one without `completedAt`.
+ * A user still needs onboarding when there is no session at all, or their
+ * `user_preferences` row has no `onboardedAt`.
  */
 export async function getOnboardingStatus(): Promise<OnboardingStatus> {
-  const { tenant, user } = await getActiveTenant();
+  const { tenant, user, authenticated } = await getActiveTenant();
   const db = await getDb();
-  const [row] = await db
-    .select({ completedAt: userOnboarding.completedAt })
-    .from(userOnboarding)
-    .where(eq(userOnboarding.userId, user.id))
+  const [prefs] = await db
+    .select({ onboardedAt: userPreferences.onboardedAt })
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, user.id))
     .limit(1);
 
   return {
     tenantId: tenant.id,
     userId: user.id,
     userName: user.name,
-    needsOnboarding: !row || !row.completedAt,
+    authenticated,
+    // The seeded demo workspace (no session) is treated as already onboarded so
+    // the demo data renders; a real signed-in user must have completed prefs.
+    needsOnboarding: authenticated ? !prefs?.onboardedAt : false,
   };
 }

@@ -2,7 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { commercialSignals, organizations, trials } from "@/db/schema";
+import {
+  commercialSignals,
+  interactions,
+  organizations,
+  trialChanges,
+  trials,
+} from "@/db/schema";
+import { inArray } from "drizzle-orm";
+import { formatRelativeDays } from "@/lib/utils";
 import { getActiveTenant } from "@/lib/tenant";
 import { EmptyState, Pill, SectionHeading, StatRail } from "@/components/ui/primitives";
 import { Table, Td, Th, Tr } from "@/components/ui/table";
@@ -49,6 +57,48 @@ export default async function AccountPage({
   }));
 
   const topScore = signals[0]?.opportunityScore ?? 0;
+
+  // ── Account timeline — interactions + signals + trial changes ─────────────
+  const trialIds = orgTrials.map((t) => t.id);
+  const [logs, changes] = await Promise.all([
+    db
+      .select()
+      .from(interactions)
+      .where(eq(interactions.organizationId, org.id))
+      .orderBy(desc(interactions.occurredAt))
+      .limit(20),
+    trialIds.length
+      ? db
+          .select()
+          .from(trialChanges)
+          .where(inArray(trialChanges.trialId, trialIds))
+          .orderBy(desc(trialChanges.detectedAt))
+          .limit(20)
+      : Promise.resolve([]),
+  ]);
+
+  const timeline = [
+    ...logs.map((l) => ({
+      at: new Date(l.occurredAt),
+      kind: l.type.replace(/_/g, " "),
+      text: l.subject ?? "Interaction logged",
+      accent: true,
+    })),
+    ...signals.slice(0, 10).map((s) => ({
+      at: new Date(s.detectedAt),
+      kind: "signal",
+      text: s.headline,
+      accent: false,
+    })),
+    ...changes.map((c) => ({
+      at: new Date(c.detectedAt),
+      kind: "trial change",
+      text: c.summary,
+      accent: false,
+    })),
+  ]
+    .sort((a, b) => b.at.getTime() - a.at.getTime())
+    .slice(0, 14);
 
   return (
     <div>
@@ -100,6 +150,41 @@ export default async function AccountPage({
           </div>
         )}
       </div>
+
+      {timeline.length ? (
+        <div className="mt-10">
+          <SectionHeading>Timeline</SectionHeading>
+          <div className="flex flex-col">
+            {timeline.map((e, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[70px_1fr] gap-4 border-b py-3"
+                style={{ borderColor: "rgba(150,185,255,.09)" }}
+              >
+                <span
+                  className="pt-0.5 text-[11px] text-[var(--faint)]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {formatRelativeDays(e.at)}
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className="mr-2 text-[10px] uppercase"
+                    style={{
+                      letterSpacing: ".14em",
+                      color: e.accent ? "var(--accent)" : "var(--faint)",
+                      fontFamily: "var(--font-mono)",
+                    }}
+                  >
+                    {e.kind}
+                  </span>
+                  <span className="text-[13.5px] text-[var(--body)]">{e.text}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {orgTrials.length ? (
         <div className="mt-10">

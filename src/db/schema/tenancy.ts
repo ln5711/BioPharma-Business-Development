@@ -5,34 +5,95 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
 /**
- * Tenancy & configuration.
+ * Identity & workspace model. Three distinct objects — never mixed:
+ *   • USER          — the person using newwin (`users`)
+ *   • ORGANIZATION / WORKSPACE — the biotech/pharma using newwin (`tenants`)
+ *   • TARGET ACCOUNT — a company they prospect or monitor (`organizations`)
  *
- * Every customer is a `tenant`. A tenant owns exactly one capability profile
- * (what they sell — spec §3) and one or more scoring profiles (spec §88).
- * Nearly every downstream table carries `tenantId` for row-level isolation.
+ * `tenants` is the Organization/Workspace. Every downstream table carries
+ * `tenantId` for row-level isolation.
  */
 export const tenants = pgTable("tenants", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  domain: text("domain"), // company website / domain
+  website: text("website"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
+  // Home organization (kept for query convenience; membership is authoritative).
   tenantId: uuid("tenant_id")
     .notNull()
     .references(() => tenants.id, { onDelete: "cascade" }),
-  email: text("email").notNull(),
+  email: text("email").notNull().unique(),
   name: text("name").notNull(),
-  position: text("position"), // job title / role, captured at onboarding
-  role: text("role").notNull().default("member"), // member | manager | admin
+  position: text("position"), // job title / role
+  role: text("role").notNull().default("member"), // member | manager | admin | owner
+  passwordHash: text("password_hash"), // scrypt: salt:hash (null for seeded/demo users)
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** USER ↔ ORGANIZATION membership. */
+export const organizationMembers = pgTable(
+  "organization_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("member"), // owner | admin | member
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("organization_members_tenant_user_idx").on(t.tenantId, t.userId)],
+);
+
+/**
+ * A single priority the user is focused on. `recommendedId` set → it came from
+ * the recommended list; `text` set → custom free-text. Both are stored.
+ */
+export interface Priority {
+  id: string;
+  recommendedId?: string;
+  text: string;
+  paused: boolean;
+  order: number;
+}
+
+/** Per-user, per-organization preferences — priorities + intelligence filters. */
+export const userPreferences = pgTable(
+  "user_preferences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    priorities: jsonb("priorities").$type<Priority[]>().notNull().default([]),
+    // Progressive intelligence profile — filled in over time, not at onboarding.
+    watchCompanies: jsonb("watch_companies").$type<string[]>().notNull().default([]),
+    therapeuticAreas: jsonb("therapeutic_areas").$type<string[]>().notNull().default([]),
+    biomarkers: jsonb("biomarkers").$type<string[]>().notNull().default([]),
+    pathways: jsonb("pathways").$type<string[]>().notNull().default([]),
+    homeRange: text("home_range").notNull().default("24h"), // 24h | 7d | 30d
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("user_preferences_user_idx").on(t.userId)],
+);
 
 /**
  * First-run onboarding (one row per user). The presence of `completedAt` gates

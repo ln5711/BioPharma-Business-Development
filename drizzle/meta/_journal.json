@@ -15,6 +15,13 @@
       "when": 1788911361906,
       "tag": "0001_swift_silvermane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788976244360,
+      "tag": "0002_fair_loners",
+      "breakpoints": true
     }
   ]
 }

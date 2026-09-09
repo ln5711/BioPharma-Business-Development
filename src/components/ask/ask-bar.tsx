@@ -1,0 +1,216 @@
+"use client";
+
+import { useState } from "react";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { ArrowRight, Sparkles } from "lucide-react";
+
+interface AskCard {
+  kind: string;
+  title: string;
+  subtitle?: string;
+  why?: string[];
+  actions: { label: string; href: string }[];
+}
+interface AskResponse {
+  answer: string;
+  cards: AskCard[];
+}
+
+const HOME_SUGGESTIONS = [
+  "What changed overnight?",
+  "What should I focus on today?",
+  "Which companies should I contact?",
+  "What trials changed this week?",
+  "Show overdue outreach",
+];
+
+/**
+ * Ask newwin. Inherits page context from the pathname (an account page → that
+ * account, a trial page → that trial). Returns actionable cards, not just prose.
+ */
+export function AskBar({ variant }: { variant: "home" | "header" }) {
+  const pathname = usePathname();
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [res, setRes] = useState<AskResponse | null>(null);
+
+  async function run(question: string) {
+    const text = question.trim();
+    if (!text) return;
+    setLoading(true);
+    setOpen(true);
+    setRes(null);
+    try {
+      const r = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ q: text, path: pathname }),
+      });
+      setRes(await r.json());
+    } catch {
+      setRes({ answer: "Something went wrong reaching newwin.", cards: [] });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (variant === "header") {
+    return (
+      <div className="relative">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(q);
+          }}
+          className="flex items-center gap-2.5 rounded-[11px] border px-3 py-2.5 transition-colors focus-within:border-[var(--accent-border)]"
+          style={{ background: "rgba(150,185,255,.06)", borderColor: "rgba(150,185,255,.14)" }}
+        >
+          <Sparkles size={14} className="text-[var(--accent)]" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Ask newwin — what are you working on?"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)]"
+          />
+        </form>
+        {open ? (
+          <ResultPanel
+            loading={loading}
+            res={res}
+            onClose={() => setOpen(false)}
+            className="right-0 top-[calc(100%+8px)] w-[min(560px,calc(100vw-2rem))]"
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          run(q);
+        }}
+        className="panel-glass flex items-center gap-3 px-4 py-3.5 transition-colors focus-within:border-[var(--accent-border)]"
+      >
+        <Sparkles size={18} className="text-[var(--accent)]" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="What are you working on?"
+          className="min-w-0 flex-1 bg-transparent text-[15px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)]"
+        />
+        <button
+          type="submit"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-semibold"
+          style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }}
+        >
+          Ask <ArrowRight size={13} />
+        </button>
+      </form>
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {HOME_SUGGESTIONS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => {
+              setQ(s);
+              run(s);
+            }}
+            className="rounded-full border px-3 py-1.5 text-[12px] text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
+            style={{ borderColor: "rgba(150,185,255,.16)" }}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+      {open ? (
+        <ResultPanel
+          loading={loading}
+          res={res}
+          onClose={() => setOpen(false)}
+          className="left-0 top-[calc(100%+10px)] w-full"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ResultPanel({
+  loading,
+  res,
+  onClose,
+  className,
+}: {
+  loading: boolean;
+  res: AskResponse | null;
+  onClose: () => void;
+  className: string;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={onClose} />
+      <div
+        className={`panel-glass fade-in absolute z-30 max-h-[70vh] overflow-y-auto p-4 ${className}`}
+      >
+        {loading ? (
+          <div className="py-6 text-center text-[13px] text-[var(--muted)]">
+            newwin is looking…
+          </div>
+        ) : res ? (
+          <div>
+            <p className="text-[13.5px] leading-[1.6] text-[var(--body)]">{res.answer}</p>
+            {res.cards.length > 0 ? (
+              <div className="mt-3 flex flex-col gap-2.5">
+                {res.cards.map((c, i) => (
+                  <div
+                    key={i}
+                    className="rounded-[12px] border p-3.5"
+                    style={{ borderColor: "var(--card-border)", background: "rgba(150,185,255,.04)" }}
+                  >
+                    <div
+                      className="text-[10px] uppercase"
+                      style={{ letterSpacing: ".16em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}
+                    >
+                      {c.kind}
+                    </div>
+                    <div className="mt-1.5 text-[14px] text-[var(--fg)]">{c.title}</div>
+                    {c.subtitle ? (
+                      <div className="mt-0.5 text-[12px] text-[var(--muted)]">{c.subtitle}</div>
+                    ) : null}
+                    {c.why?.length ? (
+                      <ul className="mt-2 flex flex-col gap-1">
+                        {c.why.map((w, j) => (
+                          <li key={j} className="flex gap-2 text-[12px] text-[var(--muted)]">
+                            <span className="diamond mt-[6px]" style={{ width: 3, height: 3 }} />
+                            {w}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      {c.actions.map((a, j) => (
+                        <Link
+                          key={j}
+                          href={a.href}
+                          onClick={onClose}
+                          className="rounded-[8px] border px-3 py-1.5 text-[12px] transition-colors"
+                          style={{ borderColor: "rgba(143,211,255,.3)", background: "rgba(143,211,255,.1)", color: "#CDE9FF" }}
+                        >
+                          {a.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}

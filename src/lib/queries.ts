@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import {
   commercialSignals,
   organizations,
+  tasks,
   trialChanges,
   trials,
   watchlists,
@@ -50,12 +51,17 @@ export async function getTopSignals(
   }));
 }
 
-export async function getDashboardCounts(tenantId: string) {
+/**
+ * Home metric cards — each number is a live count over `sinceMs`, and each is
+ * clickable (the Home page maps them to a filtered view).
+ */
+export async function getDashboardCounts(tenantId: string, sinceMs = 7 * 86_400_000) {
   const db = await getDb();
-  const since = new Date(Date.now() - 7 * 86_400_000);
+  const since = new Date(Date.now() - sinceMs);
+  const cnt = sql<number>`count(*)::int`;
 
   const [signals] = await db
-    .select({ n: sql<number>`count(*)::int` })
+    .select({ n: cnt })
     .from(commercialSignals)
     .where(
       and(
@@ -66,36 +72,50 @@ export async function getDashboardCounts(tenantId: string) {
     );
 
   const [highPriority] = await db
-    .select({ n: sql<number>`count(*)::int` })
+    .select({ n: cnt })
     .from(commercialSignals)
     .where(
       and(
         eq(commercialSignals.tenantId, tenantId),
         ne(commercialSignals.status, "dismissed"),
+        gte(commercialSignals.detectedAt, since),
         gte(commercialSignals.opportunityScore, 70),
       ),
     );
 
   const [changes] = await db
-    .select({ n: sql<number>`count(*)::int` })
+    .select({ n: cnt })
     .from(trialChanges)
+    .where(and(eq(trialChanges.tenantId, tenantId), gte(trialChanges.detectedAt, since)));
+
+  const [trialCount] = await db
+    .select({ n: cnt })
+    .from(trials)
+    .where(eq(trials.tenantId, tenantId));
+
+  const [accountsActive] = await db
+    .select({ n: sql<number>`count(distinct ${commercialSignals.organizationId})::int` })
+    .from(commercialSignals)
     .where(
       and(
-        eq(trialChanges.tenantId, tenantId),
-        gte(trialChanges.detectedAt, since),
+        eq(commercialSignals.tenantId, tenantId),
+        ne(commercialSignals.status, "dismissed"),
+        gte(commercialSignals.detectedAt, since),
       ),
     );
 
-  const [trialCount] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(trials)
-    .where(eq(trials.tenantId, tenantId));
+  const [openTasks] = await db
+    .select({ n: cnt })
+    .from(tasks)
+    .where(and(eq(tasks.tenantId, tenantId), eq(tasks.done, false)));
 
   return {
     meaningfulSignals: signals?.n ?? 0,
     highPriority: highPriority?.n ?? 0,
-    trialChanges7d: changes?.n ?? 0,
+    trialChanges: changes?.n ?? 0,
     trialsTracked: trialCount?.n ?? 0,
+    accountsActive: accountsActive?.n ?? 0,
+    openTasks: openTasks?.n ?? 0,
   };
 }
 
