@@ -56,6 +56,13 @@ export class AnthropicProvider implements LlmProvider {
       throw new AnthropicError("ANTHROPIC_API_KEY is not set (LLM_PROVIDER=anthropic)", 0, null);
     }
 
+    // `temperature` is rejected by the Claude 5 generation (adaptive thinking).
+    // Callers still pass it for older providers; strip it here for those models.
+    const payload = { model: env.LLM_MODEL, max_tokens: 2048, ...body };
+    if (/^claude-(opus-5|sonnet-5|fable-5|haiku-4-5|opus-4-[678]|sonnet-4-6)/.test(env.LLM_MODEL)) {
+      delete (payload as Record<string, unknown>).temperature;
+    }
+
     let lastErr: unknown = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const ctl = new AbortController();
@@ -70,7 +77,7 @@ export class AnthropicProvider implements LlmProvider {
             "x-api-key": env.ANTHROPIC_API_KEY,
             "anthropic-version": VERSION,
           },
-          body: JSON.stringify({ model: env.LLM_MODEL, max_tokens: 2048, ...body }),
+          body: JSON.stringify(payload),
           signal: ctl.signal,
         });
         const requestId = res.headers.get("request-id");
