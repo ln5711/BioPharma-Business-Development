@@ -251,14 +251,17 @@ function scoreTrial(p: ParsedQuery, r: TrialSearchResult): number {
 
   if (p.nctIds.includes(r.nctId)) s += 100;
   for (const a of p.assets) if (hay.includes(a.toLowerCase())) s += 30;
-  // biomarker match — reward a match in the STRONG fields (title / interventions /
-  // parsed biomarkers), only weakly credit a loose mention, and actively demote a
-  // row that never names the biomarker the user asked for.
-  const strong = `${r.title} ${r.interventions.join(" ")} ${r.biomarkers.join(" ")}`.toLowerCase();
+  // biomarker match — a STRONG-field hit (title / sponsor / intervention /
+  // condition) is what ranks a trial up. A mention only in eligibility-derived
+  // biomarker_requirements or the free-text summary is a WEAK boost — never a
+  // strong signal on its own — and a biomarker named nowhere is demoted.
+  const strongF =
+    `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")}`.toLowerCase();
+  const weakF = `${r.biomarkers.join(" ")} ${r.summary ?? ""}`.toLowerCase();
   for (const b of p.biomarkers) {
     const bl = b.toLowerCase();
-    if (strong.includes(bl)) s += 26;
-    else if (hay.includes(bl)) s += 6;
+    if (strongF.includes(bl)) s += 26;
+    else if (weakF.includes(bl)) s += 4;
     else s -= 12;
   }
   for (const c of p.companies) if ((r.sponsor ?? "").toLowerCase().includes(c.toLowerCase())) s += 25;
@@ -424,11 +427,14 @@ export async function searchTrialsHybrid(
   const gated = [...merged.values()].filter((r) => {
     if (!sciWants.length && !coWants.length) return true;
     if (nctSet.has(r.nctId)) return true;
-    const fullHay =
-      `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")} ` +
-      `${r.biomarkers.join(" ")} ${r.summary ?? ""}`.toLowerCase();
+    // STRONG identity fields only: title, sponsor, intervention/asset, condition.
+    // Eligibility-derived text (`r.biomarkers` = biomarker_requirements) and the
+    // free-text `r.summary` are NOT enough on their own — a trial that merely
+    // lists KRAS among its exclusion criteria must not pass a "KRAS" query.
+    const strongHay =
+      `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")}`.toLowerCase();
     const coHay = `${r.title} ${r.sponsor ?? ""}`.toLowerCase();
-    const sciOk = !sciWants.length || sciWants.some((w) => hit(w, fullHay));
+    const sciOk = !sciWants.length || sciWants.some((w) => hit(w, strongHay));
     const coOk = !coWants.length || coWants.some((w) => hit(w, coHay));
     return sciOk && coOk;
   });
