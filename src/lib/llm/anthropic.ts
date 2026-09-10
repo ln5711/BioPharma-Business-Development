@@ -165,6 +165,7 @@ export class AnthropicProvider implements LlmProvider {
     system?: string;
     prompt: string;
     temperature?: number;
+    maxTokens?: number;
     signal?: AbortSignal;
     timeoutMs?: number;
   }): Promise<{ text: string; meta: LlmCallMeta }> {
@@ -172,6 +173,7 @@ export class AnthropicProvider implements LlmProvider {
       {
         system: args.system,
         temperature: args.temperature ?? 0.4,
+        ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
         messages: [{ role: "user", content: args.prompt }],
       },
       { signal: args.signal, timeoutMs: args.timeoutMs },

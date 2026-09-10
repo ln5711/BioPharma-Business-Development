@@ -283,7 +283,9 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
     finalRequestId = cached.researchRequestId;
     finalModel = cached.model;
     mode = synthesis === "no_model" ? "database" : "external+ai";
-    (baseMeta as { _suggestions?: string[] })._suggestions = cached.suggestions ?? [];
+    (baseMeta as { _suggestions?: string[] })._suggestions = cached.suggestions?.length
+      ? cached.suggestions
+      : defaultSuggestions(intent);
     retrieval.push({ tool: "research_cache", count: ctgovTrials.length + externalCitations.length });
   } else {
     // 1. structured trial discovery
@@ -381,6 +383,7 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
           ]
             .filter(Boolean)
             .join("\n\n"),
+          maxTokens: 4096,
           signal: input.signal,
           timeoutMs: 45_000,
         });
@@ -388,14 +391,16 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
         finalRequestId = rich.meta.requestId;
         finalModel = rich.meta.model;
         finalUsage = rich.meta.usage ?? webUsage;
-        const nm = text.match(/\nNARROW:\s*(.+)\s*$/i);
+        const nm = text.match(/\nNARROW:\s*(.+?)\s*$/i);
         const suggestionList = nm
-          ? nm[1].split(/[,;]/).map((s) => s.trim()).filter(Boolean).slice(0, 4)
+          ? nm[1].split(/[,;]/).map((s) => s.trim().replace(/^[-•]\s*/, "")).filter(Boolean).slice(0, 4)
           : [];
         if (nm) text = text.slice(0, nm.index).trim();
         answer = text || webText || `Found ${ctgovTrials.length} ClinicalTrials.gov results (below).`;
         synthesis = answer.length >= 60 ? "ok" : "failed";
-        (baseMeta as { _suggestions?: string[] })._suggestions = suggestionList;
+        (baseMeta as { _suggestions?: string[] })._suggestions = suggestionList.length
+          ? suggestionList
+          : defaultSuggestions(intent);
       } catch (err) {
         synthesis = "failed";
         baseMeta.synthesisError = (err as Error)?.message?.slice(0, 160) ?? "synthesis failed";
@@ -538,17 +543,34 @@ function toCard(e: Evidence, origin: "public" | "workspace"): AskCard {
   };
 }
 
-function defaultSuggestions(intent: { biomarkers: string[]; indications: string[]; companies: string[] }): string[] {
+function defaultSuggestions(intent: {
+  biomarkers: string[];
+  indications: string[];
+  companies: string[];
+  topics?: string[];
+  assets?: string[];
+}): string[] {
   const b = intent.biomarkers[0];
   const c = intent.companies[0];
+  const a = intent.assets?.[0];
+  const ind = intent.indications[0];
   if (b)
     return [
       `${b} G12C inhibitors`,
-      `${b} trials in pancreatic cancer`,
+      ind ? `${b} trials in ${ind}` : `${b} trials in pancreatic cancer`,
       `companies developing ${b} drugs`,
       `${b} resistance mechanisms`,
     ];
-  if (c) return [`${c} oncology pipeline`, `${c} recent FDA approvals`, `${c} clinical trials`];
+  if (c)
+    return [
+      `${c} oncology pipeline`,
+      `${c} recent FDA approvals`,
+      `${c} clinical trials`,
+      `${c} partnering and licensing deals`,
+    ];
+  if (a) return [`${a} clinical trials`, `${a} mechanism of action`, `${a} competitors`];
+  const t = intent.topics?.[0];
+  if (t) return [`recent ${t} approvals`, `${t} clinical trials`, `companies leading in ${t}`];
   return [];
 }
 
