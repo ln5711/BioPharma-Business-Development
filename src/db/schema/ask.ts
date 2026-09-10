@@ -46,6 +46,22 @@ export const askConversations = pgTable(
   (t) => [index("ask_conversations_owner_idx").on(t.tenantId, t.userId, t.updatedAt)],
 );
 
+/**
+ * Cache of public research results (web + ClinicalTrials.gov) keyed by a hash of
+ * the normalised query. Bounds provider usage and speeds up repeat searches.
+ * Entries are treated as stale by the reader after a short TTL (~30 min); rows
+ * are not user- or tenant-scoped because the payload is purely public data.
+ */
+export const researchCache = pgTable(
+  "research_cache",
+  {
+    key: text("key").primaryKey(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("research_cache_created_idx").on(t.createdAt)],
+);
+
 export const askMessages = pgTable(
   "ask_messages",
   {

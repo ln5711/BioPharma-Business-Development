@@ -4,34 +4,44 @@ import { parseIntentHeuristic } from "@/lib/ask/intent";
 
 const ctx = {};
 
-test("an explicit company + 'this week' does not become a generic feed", () => {
-  const i = parseIntentHeuristic("What changed at Novartis this week?", ctx);
-  assert.equal(i.intent, "company_developments");
+test("outside-world queries default to public_research", () => {
+  for (const q of ["KRAS", "Novartis oncology", "Roche bioinformatics leaders", "what changed at Novartis this week?", "KRAS G12C inhibitors 2026"]) {
+    assert.equal(parseIntentHeuristic(q, ctx).intent, "public_research", q);
+  }
+});
+
+test("a bare biomarker is a valid public_research query with entities extracted", () => {
+  const i = parseIntentHeuristic("KRAS", ctx);
+  assert.equal(i.intent, "public_research");
+  assert.ok(i.biomarkers.includes("KRAS"));
+});
+
+test("company + topic split, timeframe extracted, still public_research", () => {
+  const i = parseIntentHeuristic("What changed at Novartis oncology this week?", ctx);
+  assert.equal(i.intent, "public_research");
   assert.ok(i.companies.includes("Novartis"));
+  assert.ok(!i.companies.some((c) => /oncology/i.test(c)), "'oncology' must not be glued to the company");
+  assert.ok(i.topics.includes("oncology"));
   assert.equal(i.timeframeDays, 7);
 });
 
-test("'today' alone with a company still targets that company", () => {
-  const i = parseIntentHeuristic("Any Pfizer news today?", ctx);
-  assert.equal(i.intent, "company_developments");
-  assert.ok(i.companies.includes("Pfizer"));
-  assert.equal(i.timeframeDays, 1);
+test("person-role queries capture roles and stay public_research", () => {
+  const i = parseIntentHeuristic("Roche bioinformatics leaders", ctx);
+  assert.equal(i.intent, "public_research");
+  assert.ok(i.companies.includes("Roche"));
+  assert.ok(i.personRoles.some((r) => /bioinformatics|leader/.test(r)));
 });
 
-test("filtered trial search extracts status, biomarker, indication", () => {
-  const i = parseIntentHeuristic(
-    "Find recruiting KRAS G12D trials in pancreatic cancer",
-    ctx,
-  );
-  assert.equal(i.intent, "trial_search");
+test("filters (status / biomarker / indication) are extracted for trial discovery", () => {
+  const i = parseIntentHeuristic("recruiting KRAS G12D trials in pancreatic cancer", ctx);
+  assert.equal(i.intent, "public_research");
   assert.ok(i.statuses.includes("recruiting"));
   assert.ok(i.biomarkers.includes("KRAS G12D"));
   assert.ok(i.indications.includes("pancreatic"));
 });
 
 test("'Only Phase 2' follow-up narrows to phase 2", () => {
-  const i = parseIntentHeuristic("Only Phase 2", ctx);
-  assert.ok(i.phases.includes("2"));
+  assert.ok(parseIntentHeuristic("Only Phase 2", ctx).phases.includes("2"));
 });
 
 test("compare intent with two NCT ids", () => {
@@ -40,9 +50,13 @@ test("compare intent with two NCT ids", () => {
   assert.deepEqual(i.nctIds.sort(), ["NCT12345678", "NCT87654321"]);
 });
 
-test("overdue follow-ups intent", () => {
-  const i = parseIntentHeuristic("Which follow-ups are overdue?", ctx);
-  assert.equal(i.intent, "overdue_tasks");
+test("'my …' / overdue follow-ups are PERSONAL and user-scoped", () => {
+  assert.equal(parseIntentHeuristic("Which follow-ups are overdue?", ctx).intent, "personal");
+  assert.equal(parseIntentHeuristic("Which follow-ups are overdue?", ctx).personalKind, "overdue_tasks");
+  assert.equal(parseIntentHeuristic("show my priorities", ctx).personalKind, "priorities");
+  assert.equal(parseIntentHeuristic("my contacts at BridgeBio", ctx).personalKind, "contacts");
+  // a company mention without a first-person cue is NOT personal
+  assert.equal(parseIntentHeuristic("BridgeBio contacts", ctx).intent, "public_research");
 });
 
 test("'draft an email about the second result' → draft_outreach + ordinal", () => {
@@ -56,7 +70,6 @@ test("page context fills a missing company but never overrides an explicit one",
     contextCompany: { id: "org-1", name: "ContextCo" },
   });
   assert.ok(withCtx.companies.includes("ContextCo"));
-
   const explicit = parseIntentHeuristic("what changed at Roche recently", {
     contextCompany: { id: "org-1", name: "ContextCo" },
   });
@@ -64,23 +77,8 @@ test("page context fills a missing company but never overrides an explicit one",
   assert.ok(!explicit.companies.includes("ContextCo"));
 });
 
-test("external research only when explicitly asked", () => {
-  assert.equal(parseIntentHeuristic("what changed at Merck", ctx).wantsExternalResearch, false);
-  assert.equal(
-    parseIntentHeuristic("search the web for the latest Merck KRAS news", ctx).wantsExternalResearch,
-    true,
-  );
-});
-
-test("a company name with a trailing descriptor splits into company + topic", () => {
-  const i = parseIntentHeuristic("Search the web for Novartis oncology developments", ctx);
-  assert.ok(i.companies.includes("Novartis"));
-  assert.ok(!i.companies.some((c) => /oncology/i.test(c)), "'oncology' must not be glued to the company");
-  assert.ok(i.topics.includes("oncology"));
-  assert.equal(i.wantsExternalResearch, true);
-});
-
-test("'latest ... news' triggers external research", () => {
+test("wantsExternalResearch flags recency (research runs either way)", () => {
+  assert.equal(parseIntentHeuristic("KRAS overview", ctx).wantsExternalResearch, false);
   assert.equal(parseIntentHeuristic("latest Merck KRAS news", ctx).wantsExternalResearch, true);
-  assert.equal(parseIntentHeuristic("what changed at Merck", ctx).wantsExternalResearch, false);
+  assert.equal(parseIntentHeuristic("recent Novartis approvals", ctx).wantsExternalResearch, true);
 });

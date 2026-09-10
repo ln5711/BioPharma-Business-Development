@@ -20,19 +20,30 @@ export interface AskCard {
   /** ISO event date + how it should be labelled. */
   eventDate?: string | null;
   eventDateKind?: string | null;
+  /** Where the card came from — public research vs the user's saved workspace. */
+  origin: "public" | "workspace";
   actions: { label: string; href: string }[];
+  /** An explicit Save/Monitor/Add action (a POST to a server action), if offered. */
+  save?: {
+    kind: "trial" | "watchlist" | "lead";
+    label: string;
+    /** Payload the client submits to the matching server action. */
+    payload: Record<string, string>;
+  };
 }
 
 export interface AskResponse {
   status: AskStatus;
   /** How the answer was produced. */
   mode: "database" | "database+ai" | "external+ai" | "unavailable";
-  /** The primary answer (a web-research summary, a workspace analysis, or an honest error). */
+  /** The primary answer (a public-research briefing, a workspace analysis, or an honest error). */
   answer: string;
-  /** Separate note about the workspace when the primary answer is external research. */
+  /** Separate note about the user's saved workspace records. */
   workspaceNote: string | null;
   cards: AskCard[];
   sources: AskSource[];
+  /** Suggested follow-up queries to narrow a broad search. */
+  suggestions: string[];
   conversationId: string | null;
   /** Non-sensitive telemetry for verification. Never contains secrets/content. */
   meta: {

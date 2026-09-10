@@ -1,15 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, Check } from "lucide-react";
+import {
+  saveTrialToWorkspace,
+  monitorTopic,
+  saveLead,
+  type ActionResult,
+} from "@/app/(app)/research-actions";
 
+interface AskSave {
+  kind: "trial" | "watchlist" | "lead";
+  label: string;
+  payload: Record<string, string>;
+}
 interface AskCard {
   kind: string;
   title: string;
   subtitle?: string;
   why?: string[];
+  origin?: "public" | "workspace";
+  save?: AskSave;
   actions: { label: string; href: string }[];
 }
 interface AskSource {
@@ -22,6 +35,7 @@ interface AskResponse {
   workspaceNote?: string | null;
   cards: AskCard[];
   sources?: AskSource[];
+  suggestions?: string[];
   status?: "ok" | "no_results" | "unavailable" | "error";
   mode?: string;
   meta?: { synthesis?: string; synthesisError?: string | null };
@@ -36,6 +50,7 @@ function normalize(status: number, body: unknown): AskResponse {
       workspaceNote: typeof o.workspaceNote === "string" ? o.workspaceNote : null,
       cards: Array.isArray(o.cards) ? (o.cards as AskCard[]) : [],
       sources: Array.isArray(o.sources) ? (o.sources as AskSource[]) : [],
+      suggestions: Array.isArray(o.suggestions) ? (o.suggestions as string[]) : [],
       status: (o.status as AskResponse["status"]) ?? "ok",
       mode: typeof o.mode === "string" ? o.mode : undefined,
       meta: (o.meta as AskResponse["meta"]) ?? undefined,
@@ -130,6 +145,10 @@ export function AskBar({ variant }: { variant: "home" | "header" }) {
             loading={loading}
             res={res}
             onClose={() => setOpen(false)}
+            onAsk={(s) => {
+              setQ(s);
+              run(s);
+            }}
             className="right-0 top-[calc(100%+8px)] w-[min(560px,calc(100vw-2rem))]"
           />
         ) : null}
@@ -182,8 +201,99 @@ export function AskBar({ variant }: { variant: "home" | "header" }) {
           loading={loading}
           res={res}
           onClose={() => setOpen(false)}
+          onAsk={(s) => {
+            setQ(s);
+            run(s);
+          }}
           className="left-0 top-[calc(100%+10px)] w-full"
         />
+      ) : null}
+    </div>
+  );
+}
+
+const MONO_LABEL: CSSProperties = {
+  letterSpacing: ".14em",
+  fontFamily: "var(--font-mono)",
+};
+
+/** Fire the right server action for a card's Save/Monitor/Add-lead button. */
+function dispatchSave(save: AskSave): Promise<ActionResult> {
+  if (save.kind === "trial") return saveTrialToWorkspace(save.payload);
+  if (save.kind === "watchlist") return monitorTopic(save.payload);
+  return saveLead(save.payload);
+}
+
+function SaveButton({ save }: { save: AskSave }) {
+  const [pending, start] = useTransition();
+  const [done, setDone] = useState<ActionResult | null>(null);
+
+  if (done) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[12px]"
+        style={{
+          color: done.ok ? "#8FE3B0" : "#F0866A",
+          background: done.ok ? "rgba(143,227,176,.1)" : "rgba(240,134,106,.1)",
+        }}
+      >
+        {done.ok ? <Check size={12} /> : null}
+        {done.message}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => start(async () => setDone(await dispatchSave(save).catch(() => ({ ok: false, message: "Couldn't save — try again." }))))}
+      className="rounded-[8px] border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-60"
+      style={{ borderColor: "var(--accent-border)", background: "rgba(150,185,255,.1)", color: "var(--accent)" }}
+    >
+      {pending ? "Saving…" : save.label}
+    </button>
+  );
+}
+
+function CardView({ c, onClose }: { c: AskCard; onClose: () => void }) {
+  return (
+    <div
+      className="rounded-[12px] border p-3.5"
+      style={{ borderColor: "var(--card-border)", background: "rgba(150,185,255,.04)" }}
+    >
+      <div
+        className="text-[10px] uppercase"
+        style={{ letterSpacing: ".16em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}
+      >
+        {c.kind}
+      </div>
+      <div className="mt-1.5 text-[14px] text-[var(--fg)]">{c.title}</div>
+      {c.subtitle ? <div className="mt-0.5 text-[12px] text-[var(--muted)]">{c.subtitle}</div> : null}
+      {c.why?.length ? (
+        <ul className="mt-2 flex flex-col gap-1">
+          {c.why.map((w, j) => (
+            <li key={j} className="flex gap-2 text-[12px] text-[var(--muted)]">
+              <span className="diamond mt-[6px]" style={{ width: 3, height: 3 }} />
+              {w}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {c.actions.length || c.save ? (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {c.actions.map((a, j) => (
+            <Link
+              key={j}
+              href={a.href}
+              onClick={onClose}
+              className="rounded-[8px] border px-3 py-1.5 text-[12px] transition-colors"
+              style={{ borderColor: "rgba(143,211,255,.3)", background: "rgba(143,211,255,.1)", color: "#CDE9FF" }}
+            >
+              {a.label}
+            </Link>
+          ))}
+          {c.save ? <SaveButton save={c.save} /> : null}
+        </div>
       ) : null}
     </div>
   );
@@ -193,13 +303,21 @@ function ResultPanel({
   loading,
   res,
   onClose,
+  onAsk,
   className,
 }: {
   loading: boolean;
   res: AskResponse | null;
   onClose: () => void;
+  onAsk: (q: string) => void;
   className: string;
 }) {
+  const cards = Array.isArray(res?.cards) ? res!.cards : [];
+  const publicCards = cards.filter((c) => c.origin === "public");
+  const workspaceCards = cards.filter((c) => c.origin === "workspace");
+  const ungrouped = cards.filter((c) => c.origin !== "public" && c.origin !== "workspace");
+  const suggestions = (res?.suggestions ?? []).filter(Boolean).slice(0, 4);
+
   return (
     <>
       <div className="fixed inset-0 z-20" onClick={onClose} />
@@ -279,50 +397,68 @@ function ResultPanel({
                 {res.workspaceNote}
               </div>
             ) : null}
-            {Array.isArray(res.cards) && res.cards.length > 0 ? (
+            {ungrouped.length > 0 ? (
               <div className="mt-3 flex flex-col gap-2.5">
-                {res.cards.map((c, i) => (
-                  <div
-                    key={i}
-                    className="rounded-[12px] border p-3.5"
-                    style={{ borderColor: "var(--card-border)", background: "rgba(150,185,255,.04)" }}
-                  >
-                    <div
-                      className="text-[10px] uppercase"
-                      style={{ letterSpacing: ".16em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}
-                    >
-                      {c.kind}
-                    </div>
-                    <div className="mt-1.5 text-[14px] text-[var(--fg)]">{c.title}</div>
-                    {c.subtitle ? (
-                      <div className="mt-0.5 text-[12px] text-[var(--muted)]">{c.subtitle}</div>
-                    ) : null}
-                    {c.why?.length ? (
-                      <ul className="mt-2 flex flex-col gap-1">
-                        {c.why.map((w, j) => (
-                          <li key={j} className="flex gap-2 text-[12px] text-[var(--muted)]">
-                            <span className="diamond mt-[6px]" style={{ width: 3, height: 3 }} />
-                            {w}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      {c.actions.map((a, j) => (
-                        <Link
-                          key={j}
-                          href={a.href}
-                          onClick={onClose}
-                          className="rounded-[8px] border px-3 py-1.5 text-[12px] transition-colors"
-                          style={{ borderColor: "rgba(143,211,255,.3)", background: "rgba(143,211,255,.1)", color: "#CDE9FF" }}
-                        >
-                          {a.label}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
+                {ungrouped.map((c, i) => (
+                  <CardView key={i} c={c} onClose={onClose} />
                 ))}
               </div>
+            ) : null}
+
+            {publicCards.length > 0 ? (
+              <>
+                <div
+                  className="mt-3.5 text-[10px] uppercase"
+                  style={{ ...MONO_LABEL, color: "var(--accent)" }}
+                >
+                  Public research
+                </div>
+                <div className="mt-1.5 flex flex-col gap-2.5">
+                  {publicCards.map((c, i) => (
+                    <CardView key={i} c={c} onClose={onClose} />
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {workspaceCards.length > 0 ? (
+              <>
+                <div
+                  className="mt-3.5 text-[10px] uppercase"
+                  style={{ ...MONO_LABEL, color: "var(--faint)" }}
+                >
+                  Your workspace
+                </div>
+                <div className="mt-1.5 flex flex-col gap-2.5">
+                  {workspaceCards.map((c, i) => (
+                    <CardView key={i} c={c} onClose={onClose} />
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {suggestions.length > 0 ? (
+              <>
+                <div
+                  className="mt-3.5 text-[10px] uppercase"
+                  style={{ ...MONO_LABEL, color: "var(--faint)" }}
+                >
+                  Narrow the search
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => onAsk(s)}
+                      className="rounded-full border px-3 py-1.5 text-[12px] text-[var(--muted)] transition-colors hover:text-[var(--fg)]"
+                      style={{ borderColor: "rgba(150,185,255,.16)" }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </>
             ) : null}
           </div>
         ) : null}

@@ -3,38 +3,22 @@ import { anthropic } from "@/lib/llm";
 import { llmStatus } from "@/lib/llm/status";
 import { extractIntent, type IntentContext } from "./intent";
 import {
-  companyDevelopments,
   getTrial,
   overdueTasks,
-  resolveCompanies,
   searchSignals,
   searchTrials,
   type Evidence,
   type RetrievalCtx,
-  type TrialPhase,
-  type TrialStatus,
 } from "./retrieval";
+import { ctgovSearch } from "./public-research";
+import {
+  getCachedResearch,
+  putCachedResearch,
+  researchCacheKey,
+  type CachedResearch,
+} from "./research-cache";
 import type { AskCard, AskResponse, AskSource, SynthesisState } from "./types";
 import type { WebSearchCitation } from "@/lib/llm";
-
-const PHASE_TO_ENUM: Record<string, TrialPhase[]> = {
-  "1": ["phase_1", "early_phase_1"],
-  "1/2": ["phase_1_2"],
-  "2": ["phase_2"],
-  "2/3": ["phase_2_3"],
-  "3": ["phase_3"],
-  "4": ["phase_4"],
-};
-const STATUS_TO_ENUM: Record<string, TrialStatus[]> = {
-  recruiting: ["recruiting"],
-  not_yet_recruiting: ["not_yet_recruiting"],
-  active: ["active_not_recruiting", "enrolling_by_invitation"],
-  completed: ["completed"],
-  terminated: ["terminated", "withdrawn", "suspended"],
-};
-const mapPhases = (xs: string[]): TrialPhase[] => [...new Set(xs.flatMap((x) => PHASE_TO_ENUM[x] ?? []))];
-const mapStatuses = (xs: string[]): TrialStatus[] =>
-  [...new Set(xs.flatMap((x) => STATUS_TO_ENUM[x] ?? []))];
 
 export interface AskPipelineInput {
   query: string;
@@ -58,370 +42,583 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
   const { intent, source: intentSource } = await extractIntent(input.query, input.page, input.signal);
 
   const retrieval: { tool: string; count: number }[] = [];
-  let evidence: Evidence[] = [];
-  let extra: { comparison?: unknown[] } = {};
-  let noResultsExplanation = "";
+  const baseMeta = {
+    intent: intent.intent,
+    intentSource,
+    model: null as string | null,
+    requestId: null as string | null,
+    researchRequestId: null as string | null,
+    usage: null as AskResponse["meta"]["usage"],
+    retrieval,
+    aiConfigured: status.configured,
+    synthesis: "skipped" as SynthesisState,
+    synthesisError: null as string | null,
+  };
 
-  const days = intent.timeframeDays ?? undefined;
+  // ═══════════════════════════════════════════════════════════════════════
+  //  PERSONAL — the signed-in user's own saved records only.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (intent.intent === "personal") {
+    const { evidence, note } = await personalRetrieval(input.ctx, intent.personalKind);
+    retrieval.push({ tool: `personal:${intent.personalKind}`, count: evidence.length });
 
-  if (intent.intent === "overdue_tasks") {
-    evidence = await overdueTasks(input.ctx);
-    retrieval.push({ tool: "overdueTasks", count: evidence.length });
-    if (!evidence.length) noResultsExplanation = "You have no overdue follow-ups or tasks with a past due date.";
-  } else if (intent.intent === "company_developments") {
-    const name = intent.companies[0] ?? input.page.contextCompany?.name;
-    if (!name) {
-      noResultsExplanation = "No company was named in the question.";
-    } else {
-      const matches = input.page.contextCompany
-        ? [{ id: input.page.contextCompany.id, name: input.page.contextCompany.name }]
-        : await resolveCompanies(input.ctx, { name });
-      retrieval.push({ tool: "resolveCompanies", count: matches.length });
-      if (!matches.length) {
-        noResultsExplanation = `No account called "${name}" is in your workspace. Add it as a monitored company, or ask me to search external sources.`;
-      } else {
-        const dev = await companyDevelopments(input.ctx, {
-          orgId: matches[0].id,
-          sinceDays: days,
-          phases: intent.phases.length ? mapPhases(intent.phases) : undefined,
-          statuses: intent.statuses.length ? mapStatuses(intent.statuses) : undefined,
+    let answer = note;
+    let synthesis: SynthesisState = "skipped";
+    let requestId: string | null = null;
+    let model: string | null = null;
+    if (client && evidence.length) {
+      try {
+        const rich = await client.generateTextRich({
+          system:
+            "You are Ask newwin. Summarise the user's OWN records below in 2-5 sentences. " +
+            "Only use what is listed. No preamble.",
+          prompt: `QUESTION: ${input.query}\n\nRECORDS:\n${JSON.stringify(evForModel(evidence), null, 1)}`,
+          signal: input.signal,
+          timeoutMs: 30_000,
         });
-        evidence = dev.evidence;
-        retrieval.push({ tool: "companyDevelopments", count: evidence.length });
-        if (!evidence.length) {
-          noResultsExplanation = `No developments are recorded for ${matches[0].name}${
-            days ? ` in the last ${days} day${days === 1 ? "" : "s"}` : ""
-          }. This means nothing has been ingested for that account in the window — not that nothing happened.`;
-        }
+        answer = rich.text.trim() || note;
+        requestId = rich.meta.requestId;
+        model = rich.meta.model;
+        synthesis = "ok";
+      } catch (err) {
+        synthesis = "failed";
+        baseMeta.synthesisError = (err as Error)?.message?.slice(0, 160) ?? null;
       }
     }
-  } else if (intent.intent === "trial_search") {
-    // A token that's also a biomarker/asset is not a company filter.
-    const bioLower = new Set(
-      [...intent.biomarkers, ...intent.assets].map((s) => s.toLowerCase()),
-    );
-    const companyFilter = intent.companies.find((c) => !bioLower.has(c.toLowerCase()));
-    const res = await searchTrials(input.ctx, {
-      company: companyFilter,
-      biomarker: intent.biomarkers[0],
-      indication: intent.indications[0],
-      phases: intent.phases.length ? mapPhases(intent.phases) : undefined,
-      statuses: intent.statuses.length ? mapStatuses(intent.statuses) : undefined,
-      updatedWithinDays: days,
-      nctId: intent.nctIds[0],
-      limit: 15,
-    });
-    evidence = res.evidence;
-    retrieval.push({ tool: "searchTrials", count: res.total });
-    if (!evidence.length) {
-      noResultsExplanation =
-        "No trials in your workspace match all of those filters. Loosen a filter, or ask me to search ClinicalTrials.gov directly.";
-    }
-  } else if (intent.intent === "compare_trials") {
-    let ncts = intent.nctIds;
-    // Resolve "the second result" against previous cards.
+    return {
+      status: evidence.length ? "ok" : "no_results",
+      mode: client && synthesis === "ok" ? "database+ai" : "database",
+      answer,
+      workspaceNote: null,
+      cards: evidence.slice(0, 8).map((e) => toCard(e, "workspace")),
+      sources: evidence.slice(0, 10).map(
+        (e): AskSource => ({
+          kind: "workspace_record",
+          label: e.title,
+          url: e.sourceUrl ?? e.recordUrl,
+          date: e.eventDate,
+        }),
+      ),
+      suggestions: [],
+      conversationId: input.conversationId ?? null,
+      meta: { ...baseMeta, model, requestId, synthesis },
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  COMPARE TRIALS — specific NCT ids (workspace first, then live CT.gov).
+  // ═══════════════════════════════════════════════════════════════════════
+  if (intent.intent === "compare_trials") {
+    let ncts = [...intent.nctIds];
     if (intent.refersToPreviousResult && input.previousCards?.length) {
-      const card = input.previousCards[intent.refersToPreviousResult - 1];
-      const m = card?.href.match(/\/trials\/(NCT\d{8})/i);
-      if (m) ncts = [...new Set([...ncts, m[1].toUpperCase()])];
+      const m = input.previousCards[intent.refersToPreviousResult - 1]?.href.match(/(NCT\d{8})/i);
+      if (m) ncts.push(m[1].toUpperCase());
     }
-    if (input.page.contextNctId) ncts = [...new Set([...ncts, input.page.contextNctId])];
-    const full = (await Promise.all(ncts.slice(0, 4).map((n) => getTrial(input.ctx, { nctId: n })))).filter(
-      Boolean,
-    );
+    if (input.page.contextNctId) ncts.push(input.page.contextNctId);
+    ncts = [...new Set(ncts)].slice(0, 4);
+
+    const full = (
+      await Promise.all(ncts.map((n) => getTrial(input.ctx, { nctId: n })))
+    ).filter(Boolean) as NonNullable<Awaited<ReturnType<typeof getTrial>>>[];
     retrieval.push({ tool: "getTrial", count: full.length });
-    extra = { comparison: full };
-    evidence = full.map((t) => ({
-      kind: "trial" as const,
-      id: t!.nctId,
-      title: `${t!.nctId} — ${t!.title ?? ""}`,
-      summary: [t!.phase, t!.status, t!.sponsorName].filter(Boolean).join(" · "),
-      eventDate: t!.lastCtgovUpdate ?? t!.startDate,
-      importedAt: t!.firstSeenAt,
-      eventDateKind: t!.lastCtgovUpdate ? "source_update" : "first_posted",
-      recordUrl: t!.recordUrl,
-      sourceUrl: t!.sourceUrl,
+
+    const evidence: Evidence[] = full.map((t) => ({
+      kind: "trial",
+      id: t.nctId,
+      title: `${t.nctId} — ${t.title ?? ""}`,
+      summary: [t.phase, t.status, t.sponsorName].filter(Boolean).join(" · "),
+      eventDate: t.lastCtgovUpdate ?? t.startDate,
+      importedAt: t.firstSeenAt,
+      eventDateKind: t.lastCtgovUpdate ? "source_update" : "first_posted",
+      recordUrl: t.recordUrl,
+      sourceUrl: t.sourceUrl,
       sourceLabel: "ClinicalTrials.gov",
     }));
-    if (!full.length) noResultsExplanation = "I couldn't find those trials in your workspace to compare.";
-  } else if (intent.intent === "draft_outreach") {
-    // Identify the record the draft is about (ordinal into previous cards, an
-    // explicit NCT, or page context), then point at the Outreach workspace.
+
+    let answer = full.length
+      ? deterministicAnswer("compare_trials", evidence, "")
+      : "I couldn't find those trials to compare.";
+    let synthesis: SynthesisState = "skipped";
+    let requestId: string | null = null;
+    let model: string | null = null;
+    if (client && full.length >= 1) {
+      try {
+        const rich = await client.generateTextRich({
+          system:
+            "You are Ask newwin. Compare the trials below across phase, status, sponsor, " +
+            "population, endpoints and biomarker requirements. Cite each trial as [NCT…]. " +
+            "6-10 sentences, plain prose.",
+          prompt: `QUESTION: ${input.query}\n\nTRIALS:\n${JSON.stringify(full, null, 1)}`,
+          signal: input.signal,
+          timeoutMs: 40_000,
+        });
+        answer = rich.text.trim() || answer;
+        requestId = rich.meta.requestId;
+        model = rich.meta.model;
+        synthesis = "ok";
+      } catch (err) {
+        synthesis = "failed";
+        baseMeta.synthesisError = (err as Error)?.message?.slice(0, 160) ?? null;
+      }
+    }
+    return {
+      status: full.length ? "ok" : "no_results",
+      mode: synthesis === "ok" ? "database+ai" : "database",
+      answer,
+      workspaceNote: null,
+      cards: evidence.map((e) => toCard(e, "workspace")),
+      sources: evidence.map(
+        (e): AskSource => ({ kind: "workspace_record", label: e.title, url: e.sourceUrl, date: e.eventDate }),
+      ),
+      suggestions: [],
+      conversationId: input.conversationId ?? null,
+      meta: { ...baseMeta, model, requestId, synthesis },
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  DRAFT OUTREACH — point at the Outreach workspace.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (intent.intent === "draft_outreach") {
     let label: string | null = null;
     if (intent.refersToPreviousResult && input.previousCards?.length) {
       label = input.previousCards[intent.refersToPreviousResult - 1]?.title ?? null;
     }
-    label ??= intent.nctIds[0] ?? input.page.contextNctId ?? input.page.contextCompany?.name ?? null;
-    retrieval.push({ tool: "draft_outreach", count: label ? 1 : 0 });
-    if (label) {
-      evidence = [
-        {
-          kind: "task",
-          id: label,
-          title: `Draft outreach about ${label}`,
-          summary: "Open Outreach to log or draft a message tied to this record.",
-          eventDate: null,
-          importedAt: null,
-          eventDateKind: null,
-          recordUrl: "/outreach",
-          sourceUrl: null,
-          sourceLabel: null,
-        },
-      ];
-    } else {
-      noResultsExplanation =
-        'Tell me which result to draft about — e.g. "draft outreach about the first result".';
-    }
-  } else {
-    // keyword_search
-    const term = intent.companies[0] ?? intent.biomarkers[0] ?? intent.indications[0] ?? input.query;
-    const res = await searchSignals(input.ctx, { term: term.slice(0, 120), sinceDays: days, limit: 12 });
-    evidence = res.evidence;
-    retrieval.push({ tool: "searchSignals", count: res.total });
-    if (!evidence.length) {
-      noResultsExplanation = `Nothing in your workspace matches "${input.query}". I did not substitute unrelated results.`;
-    }
+    label ??= intent.nctIds[0] ?? intent.companies[0] ?? input.page.contextCompany?.name ?? null;
+    return {
+      status: "ok",
+      mode: "database",
+      answer: label
+        ? `Open Outreach to draft or log a message about ${label}.`
+        : 'Tell me which result to draft about — e.g. "draft outreach about the first result".',
+      workspaceNote: null,
+      cards: label
+        ? [
+            {
+              kind: "outreach",
+              title: `Draft outreach about ${label}`,
+              subtitle: "Open the Outreach workspace.",
+              origin: "workspace",
+              actions: [{ label: "Open Outreach", href: "/outreach" }],
+            },
+          ]
+        : [],
+      sources: [],
+      suggestions: [],
+      conversationId: input.conversationId ?? null,
+      meta: baseMeta,
+    };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  //  Compose the answer. Two independent paths that never overwrite each other:
-  //   • wantsExternalResearch  → a web-research summary is the PRIMARY answer;
-  //                              the workspace state is a separate note.
-  //   • otherwise               → a workspace analysis (or an honest no-results).
-  // ─────────────────────────────────────────────────────────────────────────
-  const evidenceForModel = evidence.slice(0, 20).map((e, i) => ({
-    n: i + 1,
-    kind: e.kind,
-    title: e.title,
-    summary: e.summary,
-    eventDate: e.eventDate,
-    eventDateKind: e.eventDateKind,
-    importedAt: e.importedAt,
-    source: e.sourceLabel,
-    sourceUrl: e.sourceUrl,
-  }));
+  // ═══════════════════════════════════════════════════════════════════════
+  //  PUBLIC RESEARCH — the default. ClinicalTrials.gov + web + (secondary)
+  //  the user's saved workspace. Missing saved records never block this.
+  // ═══════════════════════════════════════════════════════════════════════
+  const companyTopic = [intent.companies[0], ...intent.topics, ...intent.personRoles]
+    .filter(Boolean)
+    .join(" ");
+  const ctTerms = [
+    ...intent.biomarkers,
+    ...intent.assets,
+    ...(intent.companies[0] ? [intent.companies[0]] : []),
+    ...(intent.biomarkers.length || intent.assets.length ? [] : intent.topics),
+  ];
+  const ctConds = intent.indications;
+  const wantsTrials =
+    intent.nctIds.length === 0 &&
+    (ctTerms.length > 0 || ctConds.length > 0) &&
+    intent.personRoles.length === 0;
+
+  // Workspace retrieval always runs fresh (tenant-scoped, never cached).
+  const [wsTrialsRes, wsSignalsRes] = await Promise.all([
+    searchTrials(input.ctx, {
+      company: intent.companies[0],
+      biomarker: intent.biomarkers[0],
+      indication: intent.indications[0],
+      limit: 5,
+    }).catch(() => ({ evidence: [], total: 0 })),
+    searchSignals(input.ctx, {
+      term: (intent.companies[0] ?? intent.biomarkers[0] ?? intent.indications[0] ?? input.query).slice(0, 120),
+      limit: 6,
+    }).catch(() => ({ evidence: [], total: 0 })),
+  ]);
+  retrieval.push({ tool: "workspace_trials", count: wsTrialsRes.evidence.length });
+  retrieval.push({ tool: "workspace_signals", count: wsSignalsRes.evidence.length });
+
+  // ── the PUBLIC half: served from cache when fresh, else computed once ──
+  const cacheKey = researchCacheKey({
+    query: input.query,
+    companies: intent.companies,
+    topics: intent.topics,
+    biomarkers: intent.biomarkers,
+    indications: intent.indications,
+    assets: intent.assets,
+    personRoles: intent.personRoles,
+    statuses: intent.statuses,
+    wantsExternalResearch: intent.wantsExternalResearch,
+  });
+  const cached = await getCachedResearch(cacheKey);
+
+  let ctgovTrials: import("./public-research").PublicTrial[] = [];
+  let webText = "";
+  let externalCitations: { url: string; title: string }[] = [];
+  let researchRequestId: string | null = null;
+  let webUsage: AskResponse["meta"]["usage"] = null;
+  let webFailed = false;
 
   let answer = "";
-  let workspaceNote: string | null = null;
-  let mode: AskResponse["mode"] = client ? "database+ai" : "database";
   let synthesis: SynthesisState = "skipped";
-  let synthesisError: string | null = null;
-  let requestId: string | null = null;
-  let researchRequestId: string | null = null;
-  let usage: AskResponse["meta"]["usage"] = null;
-  let model: string | null = null;
-  let externalCitations: { url: string; title: string }[] = [];
+  let finalRequestId: string | null = null;
+  let finalModel: string | null = null;
+  let finalUsage: AskResponse["meta"]["usage"] = null;
+  let mode: AskResponse["mode"] = "external+ai";
 
-  const wantsExternal = intent.wantsExternalResearch;
+  if (cached) {
+    ctgovTrials = cached.ctgovTrials ?? [];
+    webText = cached.webText ?? "";
+    externalCitations = cached.externalCitations ?? [];
+    researchRequestId = cached.researchRequestId;
+    answer = cached.answer;
+    synthesis = cached.synthesis;
+    finalRequestId = cached.researchRequestId;
+    finalModel = cached.model;
+    mode = synthesis === "no_model" ? "database" : "external+ai";
+    (baseMeta as { _suggestions?: string[] })._suggestions = cached.suggestions ?? [];
+    retrieval.push({ tool: "research_cache", count: ctgovTrials.length + externalCitations.length });
+  } else {
+    // 1. structured trial discovery
+    if (wantsTrials) {
+      ctgovTrials = await ctgovSearch({
+        terms: ctTerms,
+        conditions: ctConds,
+        statuses: intent.statuses.length
+          ? intent.statuses.flatMap((s) => CTGOV_STATUS[s] ?? [])
+          : undefined,
+        limit: 10,
+        signal: input.signal,
+      }).catch(() => []);
+      retrieval.push({ tool: "ctgov_search", count: ctgovTrials.length });
+    }
 
-  if (wantsExternal) {
-    // ── PRIMARY: current web research ──────────────────────────────────────
-    workspaceNote = evidence.length
-      ? `Your workspace also has ${evidence.length} related record${evidence.length === 1 ? "" : "s"} (listed below).`
-      : "Your workspace has no saved records on this topic yet.";
-
-    if (!client || !status.webSearch) {
-      answer =
-        "Web search is unavailable in this environment (no AI provider configured), so I can't pull current sources. " +
-        (evidence.length ? "Here is what your workspace holds instead — see the records below." : "");
-      synthesis = "no_model";
-      mode = "database";
-    } else {
-      const focus = [intent.companies[0], ...intent.topics].filter(Boolean).join(" ");
-      let researchText = "";
+    // 2. current public information via web search
+    let webModel: string | null = null;
+    if (client && status.webSearch) {
       try {
+        const focus = companyTopic || intent.biomarkers[0] || intent.indications[0] || input.query;
         const r = await client.research({
           system:
-            "You research CURRENT developments using the web_search tool. " +
+            "Research the user's topic using the web_search tool for CURRENT public information. " +
             "Prefer primary sources: company press releases and investor updates, ClinicalTrials.gov, " +
-            "regulator notices (FDA/EMA), and peer-reviewed journals. " +
-            "Write a readable briefing in plain prose paragraphs (NO markdown headings, bullets or bold) of 6-12 sentences. Attribute each claim to its source and give the date. " +
-            "Group multiple reports of the same announcement together — do not repeat regional or syndicated versions. " +
-            "Do not rely on training memory for anything time-sensitive.",
+            "FDA/EMA notices, peer-reviewed journals, and reputable trade press. " +
+            "Write a readable briefing in plain prose paragraphs (NO markdown headings/bullets/bold), " +
+            "6-12 sentences. Attribute each claim to its source and give the date. " +
+            "Merge duplicate coverage of the same announcement. Do NOT rely on training memory for " +
+            "time-sensitive facts — use the tool. If asked about people, give names, titles and a source each.",
           prompt:
             `Question: ${input.query}\n` +
             (focus ? `Focus: ${focus}\n` : "") +
-            "Return a dated, source-attributed summary.",
+            (intent.wantsExternalResearch ? "Emphasise the most recent developments.\n" : "") +
+            "Return a dated, source-attributed briefing.",
           maxUses: 5,
           signal: input.signal,
         });
-        researchText = r.text.trim();
+        webText = r.text.trim();
         externalCitations = dedupeCitations(r.citations);
         researchRequestId = r.meta.requestId;
-        model = r.meta.model;
-        usage = r.meta.usage;
+        webUsage = r.meta.usage;
+        webModel = r.meta.model;
         retrieval.push({ tool: "web_search", count: externalCitations.length });
-        mode = "external+ai";
-
-        if (researchText.length >= 60) {
-          answer = researchText;
-          requestId = r.meta.requestId;
-          synthesis = "ok";
-        } else if (externalCitations.length > 0) {
-          // Got sources but no usable prose — run one explicit synthesis pass.
-          try {
-            const rich = await client.generateTextRich({
-              system:
-                "Summarise the retrieved web sources into a readable, dated, source-attributed briefing " +
-                "of 6-12 sentences (plain prose, no markdown) about the exact question. Merge duplicate coverage of the same announcement. " +
-                "Every claim must be traceable to one of the listed sources.",
-              prompt:
-                `QUESTION: ${input.query}\n\nRETRIEVED SOURCES:\n` +
-                externalCitations
-                  .map((c, i) => `[${i + 1}] ${c.title} — ${c.url}`)
-                  .join("\n"),
-              temperature: 0.2,
-              signal: input.signal,
-              timeoutMs: 40_000,
-            });
-            answer = rich.text.trim();
-            requestId = rich.meta.requestId;
-            usage = rich.meta.usage ?? usage;
-            model = rich.meta.model ?? model;
-            synthesis = answer.length >= 40 ? "ok" : "failed";
-            if (synthesis === "failed") synthesisError = "the summary step returned no usable text";
-          } catch (err) {
-            synthesis = "failed";
-            synthesisError = (err as Error)?.message?.slice(0, 160) ?? "synthesis request failed";
-            answer =
-              "I retrieved current web sources but the summary step failed. The links are below — open them directly.";
-          }
-        } else {
-          synthesis = "failed";
-          synthesisError = "web search returned no results";
-          answer = `I searched the web for "${input.query}" but found no usable current sources.`;
-        }
       } catch (err) {
-        synthesis = "failed";
-        synthesisError = (err as Error)?.message?.slice(0, 160) ?? "web_search request failed";
-        answer =
-          "The web search could not be completed (the AI provider errored). " +
-          (evidence.length ? "Your workspace records are listed below." : "Please try again in a moment.");
-        mode = "database";
+        webFailed = true;
+        baseMeta.synthesisError = (err as Error)?.message?.slice(0, 160) ?? "web_search failed";
       }
     }
-  } else {
-    // ── PRIMARY: workspace analysis ───────────────────────────────────────
-    if (!client) {
-      answer = deterministicAnswer(intent.intent, evidence, noResultsExplanation);
+
+    finalRequestId = researchRequestId;
+    finalModel = webModel;
+    finalUsage = webUsage;
+
+    // 3. grounded synthesis
+    const ctgovBlock = ctgovTrials.length
+      ? `CLINICALTRIALS.GOV RESULTS (${ctgovTrials.length}):\n` +
+        ctgovTrials
+          .map(
+            (t, i) =>
+              `[${i + 1}] ${t.nctId} — ${t.title} · ${t.phase} · ${t.status} · sponsor ${t.sponsor ?? "?"} · ` +
+              `conditions ${t.conditions.join(", ")} · first posted ${t.firstPostedDate ?? "?"}`,
+          )
+          .join("\n")
+      : "";
+
+    if (!client || !status.webSearch) {
+      mode = "database";
       synthesis = "no_model";
+      answer =
+        (webFailed ? "" : "AI research is not configured in this environment, so I can't synthesise a briefing. ") +
+        (ctgovTrials.length
+          ? `Here are ${ctgovTrials.length} current ClinicalTrials.gov results for your query (cards below).`
+          : "No structured trial results were found for that query.");
+    } else if (webFailed && !ctgovTrials.length) {
       mode = "database";
-    } else if (evidence.length === 0) {
-      answer = noResultsExplanation || "The workspace has no matching records for that question.";
-      synthesis = "skipped";
-      mode = "database";
+      synthesis = "failed";
+      answer =
+        "The web research step failed and no structured trial results were found. Please try again in a moment.";
     } else {
       try {
         const rich = await client.generateTextRich({
           system:
-            "You are Ask newwin, an oncology business-development analyst. Answer the user's exact question. " +
-            "Ground every statement ONLY in the EVIDENCE provided (workspace records). " +
-            "Never introduce companies or trials that are not in the evidence. " +
-            "Cite evidence items as [n]. When you mention a date, say whether it is the event/publication date " +
-            "or when newwin imported the record. If the evidence does not answer the question, say so plainly. " +
-            "Keep it to 4-8 sentences. No preamble.",
+            "You are Ask newwin, an oncology research analyst. Answer the user's query as a PUBLIC RESEARCH briefing. " +
+            "Ground every statement ONLY in the WEB RESEARCH text and the CLINICALTRIALS.GOV RESULTS provided. " +
+            "Do not use unstated training knowledge for specific facts, numbers, dates or names. " +
+            "Plain prose, 6-12 sentences, each claim attributed to a source with its date. " +
+            "For a broad one-word topic, give a concise orientation (what it is, why it matters, the current landscape). " +
+            "End with a line 'NARROW: ' followed by 3-4 comma-separated follow-up angles the user could search next.",
           prompt: [
-            `QUESTION: ${input.query}`,
-            intent.timeframeDays ? `TIMEFRAME: last ${intent.timeframeDays} days` : "",
-            `EVIDENCE (workspace records):\n${JSON.stringify(evidenceForModel, null, 1)}`,
-            extra.comparison?.length
-              ? `TRIALS TO COMPARE:\n${JSON.stringify(extra.comparison, null, 1)}`
-              : "",
+            `QUERY: ${input.query}`,
+            companyTopic ? `INTERPRETED AS: ${companyTopic}` : "",
+            webText ? `WEB RESEARCH:\n${webText}` : "(web research returned no text)",
+            ctgovBlock,
           ]
             .filter(Boolean)
             .join("\n\n"),
-          temperature: 0.2,
           signal: input.signal,
-          timeoutMs: 40_000,
+          timeoutMs: 45_000,
         });
-        answer = rich.text.trim() || deterministicAnswer(intent.intent, evidence, noResultsExplanation);
-        requestId = rich.meta.requestId;
-        usage = rich.meta.usage;
-        model = rich.meta.model;
-        synthesis = rich.text.trim().length >= 30 ? "ok" : "failed";
-        mode = "database+ai";
+        let text = rich.text.trim();
+        finalRequestId = rich.meta.requestId;
+        finalModel = rich.meta.model;
+        finalUsage = rich.meta.usage ?? webUsage;
+        const nm = text.match(/\nNARROW:\s*(.+)\s*$/i);
+        const suggestionList = nm
+          ? nm[1].split(/[,;]/).map((s) => s.trim()).filter(Boolean).slice(0, 4)
+          : [];
+        if (nm) text = text.slice(0, nm.index).trim();
+        answer = text || webText || `Found ${ctgovTrials.length} ClinicalTrials.gov results (below).`;
+        synthesis = answer.length >= 60 ? "ok" : "failed";
+        (baseMeta as { _suggestions?: string[] })._suggestions = suggestionList;
       } catch (err) {
         synthesis = "failed";
-        synthesisError = (err as Error)?.message?.slice(0, 160) ?? "synthesis request failed";
-        answer = deterministicAnswer(intent.intent, evidence, noResultsExplanation);
-        mode = "database";
+        baseMeta.synthesisError = (err as Error)?.message?.slice(0, 160) ?? "synthesis failed";
+        answer =
+          (webText ? `${webText}\n\n` : "") +
+          (ctgovTrials.length ? `Plus ${ctgovTrials.length} ClinicalTrials.gov results (below).` : "") ||
+          "The research summary step failed. Any retrieved links and trials are shown below.";
       }
+    }
+
+    // Cache the public half when it is genuinely useful (never a failure state).
+    if (synthesis === "ok" || (synthesis === "no_model" && ctgovTrials.length > 0)) {
+      const toCache: CachedResearch = {
+        answer,
+        synthesis: synthesis as CachedResearch["synthesis"],
+        webText,
+        externalCitations,
+        ctgovTrials,
+        suggestions: (baseMeta as { _suggestions?: string[] })._suggestions ?? [],
+        researchRequestId,
+        model: finalModel,
+      };
+      void putCachedResearch(cacheKey, toCache);
     }
   }
 
-  // ── cards + sources ───────────────────────────────────────────────────
-  const cards: AskCard[] = evidence.slice(0, 8).map((e) => ({
-    kind: e.kind.replace(/_/g, " "),
-    title: e.title,
-    subtitle: e.summary,
-    eventDate: e.eventDate,
-    eventDateKind: e.eventDateKind,
-    why:
-      e.eventDate && e.importedAt && e.eventDate !== e.importedAt
-        ? [`Event ${short(e.eventDate)} · added to workspace ${short(e.importedAt)}`]
-        : e.importedAt
-          ? [`Added to workspace ${short(e.importedAt)}`]
-          : undefined,
-    actions: [
-      { label: "Open record", href: e.recordUrl },
-      ...(e.sourceUrl ? [{ label: e.sourceLabel ?? "Source", href: e.sourceUrl }] : []),
-    ],
+  // ── cards: public first, then the user's saved workspace ──────────────
+  const publicCards: AskCard[] = ctgovTrials.map((t) => ({
+    kind: "trial (public)",
+    title: `${t.nctId} — ${t.title}`,
+    subtitle: [t.phase, t.status, t.sponsor, t.conditions.slice(0, 2).join(", ")].filter(Boolean).join(" · "),
+    eventDate: t.firstPostedDate,
+    eventDateKind: "first_posted",
+    origin: "public",
+    actions: [{ label: "ClinicalTrials.gov ↗", href: t.url }],
+    save: {
+      kind: "trial",
+      label: "Save to workspace",
+      payload: { nctId: t.nctId },
+    },
   }));
+  if (intent.companies[0] || companyTopic) {
+    publicCards.push({
+      kind: "monitor",
+      title: `Monitor "${intent.companies[0] ?? companyTopic}"`,
+      subtitle: "Create a saved ClinicalTrials.gov watch for this topic.",
+      origin: "public",
+      actions: [],
+      save: {
+        kind: "watchlist",
+        label: "Monitor this topic",
+        payload: {
+          name: (intent.companies[0] ?? companyTopic).slice(0, 60),
+          terms: [...intent.biomarkers, ...intent.assets, intent.companies[0] ?? ""].filter(Boolean).join(","),
+          conditions: intent.indications.join(","),
+        },
+      },
+    });
+  }
+
+  const wsCards: AskCard[] = [
+    ...wsTrialsRes.evidence.slice(0, 4).map((e) => toCard(e, "workspace")),
+    ...wsSignalsRes.evidence.slice(0, 4).map((e) => toCard(e, "workspace")),
+  ];
 
   const sources: AskSource[] = [
-    ...evidence.slice(0, 12).map(
-      (e): AskSource => ({
-        kind: "workspace_record",
-        label: e.sourceLabel ? `${e.title} — ${e.sourceLabel}` : e.title,
-        url: e.sourceUrl ?? e.recordUrl,
-        date: e.eventDate,
-      }),
+    ...externalCitations.map((c): AskSource => ({ kind: "external", label: c.title, url: c.url, date: null })),
+    ...ctgovTrials.slice(0, 8).map(
+      (t): AskSource => ({ kind: "external", label: `${t.nctId} — ClinicalTrials.gov`, url: t.url, date: t.firstPostedDate }),
     ),
-    ...externalCitations.map(
-      (c): AskSource => ({ kind: "external", label: c.title, url: c.url, date: null }),
+    ...wsCards.slice(0, 8).map(
+      (c): AskSource => ({ kind: "workspace_record", label: c.title, url: c.actions[0]?.href ?? null, date: c.eventDate ?? null }),
     ),
   ];
   if (client && synthesis === "ok") {
     sources.push({
       kind: "interpretation",
-      label: wantsExternal
-        ? "This summary is written by Claude from the current web sources above."
-        : "Interpretation & suggested actions are generated by Claude from the workspace evidence above.",
+      label: "This briefing is written by Claude from the public sources above — not from its training data.",
       url: null,
       date: null,
     });
   }
 
-  // Honest final status.
-  let finalStatus: AskResponse["status"];
-  if (synthesis === "no_model" && wantsExternal) {
-    finalStatus = "unavailable";
-  } else if (wantsExternal) {
-    finalStatus = synthesis === "ok" || externalCitations.length > 0 ? "ok" : "error";
-  } else {
-    finalStatus = evidence.length === 0 ? "no_results" : synthesis === "failed" ? "error" : "ok";
-  }
+  const workspaceNote = wsCards.length
+    ? `You also have ${wsCards.length} related saved record${wsCards.length === 1 ? "" : "s"} (below).`
+    : "You have no saved records for this yet — the results above are public research.";
+
+  const anythingUseful = answer.length > 40 || publicCards.length > 0 || wsCards.length > 0;
 
   return {
-    status: finalStatus,
+    status: anythingUseful ? "ok" : webFailed ? "error" : "no_results",
     mode,
     answer,
     workspaceNote,
-    cards,
+    cards: [...publicCards, ...wsCards],
     sources,
+    suggestions: (baseMeta as { _suggestions?: string[] })._suggestions ?? defaultSuggestions(intent),
     conversationId: input.conversationId ?? null,
     meta: {
-      intent: intent.intent,
-      intentSource,
-      model,
-      requestId,
+      ...baseMeta,
+      model: finalModel,
+      requestId: finalRequestId,
       researchRequestId,
-      usage,
-      retrieval,
-      aiConfigured: status.configured,
+      usage: finalUsage,
       synthesis,
-      synthesisError,
     },
+  };
+}
+
+const CTGOV_STATUS: Record<string, string[]> = {
+  recruiting: ["RECRUITING"],
+  not_yet_recruiting: ["NOT_YET_RECRUITING"],
+  active: ["ACTIVE_NOT_RECRUITING", "ENROLLING_BY_INVITATION"],
+  completed: ["COMPLETED"],
+  terminated: ["TERMINATED", "WITHDRAWN", "SUSPENDED"],
+};
+
+function evForModel(evidence: Evidence[]) {
+  return evidence.slice(0, 12).map((e, i) => ({
+    n: i + 1,
+    kind: e.kind,
+    title: e.title,
+    summary: e.summary,
+    date: e.eventDate,
+  }));
+}
+
+function toCard(e: Evidence, origin: "public" | "workspace"): AskCard {
+  return {
+    kind: e.kind.replace(/_/g, " "),
+    title: e.title,
+    subtitle: e.summary,
+    eventDate: e.eventDate,
+    eventDateKind: e.eventDateKind,
+    origin,
+    actions: [
+      { label: "Open record", href: e.recordUrl },
+      ...(e.sourceUrl ? [{ label: e.sourceLabel ?? "Source ↗", href: e.sourceUrl }] : []),
+    ],
+  };
+}
+
+function defaultSuggestions(intent: { biomarkers: string[]; indications: string[]; companies: string[] }): string[] {
+  const b = intent.biomarkers[0];
+  const c = intent.companies[0];
+  if (b)
+    return [
+      `${b} G12C inhibitors`,
+      `${b} trials in pancreatic cancer`,
+      `companies developing ${b} drugs`,
+      `${b} resistance mechanisms`,
+    ];
+  if (c) return [`${c} oncology pipeline`, `${c} recent FDA approvals`, `${c} clinical trials`];
+  return [];
+}
+
+async function personalRetrieval(
+  ctx: RetrievalCtx,
+  kind: string,
+): Promise<{ evidence: Evidence[]; note: string }> {
+  if (kind === "overdue_tasks" || kind === "tasks") {
+    const ev = await overdueTasks(ctx);
+    return {
+      evidence: ev,
+      note: ev.length
+        ? `You have ${ev.length} overdue item${ev.length === 1 ? "" : "s"}.`
+        : "You have no overdue follow-ups or tasks with a past due date.",
+    };
+  }
+  if (kind === "priorities") {
+    const { getUserPrefs } = await import("@/lib/user-prefs");
+    const prefs = await getUserPrefs(ctx.userId);
+    const active = prefs.priorities.filter((p) => !p.paused);
+    return {
+      evidence: active.map((p) => ({
+        kind: "task",
+        id: p.id,
+        title: p.text,
+        summary: p.recommendedId ? "recommended priority" : "custom priority",
+        eventDate: null,
+        importedAt: null,
+        eventDateKind: null,
+        recordUrl: "/settings",
+        sourceUrl: null,
+        sourceLabel: null,
+      })),
+      note: active.length
+        ? `Your active priorities: ${active.map((p) => p.text).join("; ")}.`
+        : "You have no active priorities. Add some in Settings.",
+    };
+  }
+  if (kind === "contacts") {
+    const { getDb } = await import("@/db");
+    const { people, organizations } = await import("@/db/schema");
+    const { and, eq, desc } = await import("drizzle-orm");
+    const db = await getDb();
+    const rows = await db
+      .select({ id: people.id, name: people.name, title: people.title, org: organizations.canonicalName, orgId: people.organizationId })
+      .from(people)
+      .leftJoin(organizations, eq(organizations.id, people.organizationId))
+      .where(eq(people.tenantId, ctx.tenantId))
+      .orderBy(desc(people.relevanceScore))
+      .limit(10);
+    void and;
+    return {
+      evidence: rows.map((r) => ({
+        kind: "company",
+        id: r.id,
+        title: r.name,
+        summary: [r.title, r.org].filter(Boolean).join(" · "),
+        eventDate: null,
+        importedAt: null,
+        eventDateKind: null,
+        recordUrl: r.orgId ? `/accounts/${r.orgId}` : "/accounts",
+        sourceUrl: null,
+        sourceLabel: null,
+      })),
+      note: rows.length ? `${rows.length} saved contacts.` : "You have no saved contacts yet.",
+    };
+  }
+  return {
+    evidence: [],
+    note: "That's a personal request. Your priorities and profile live in Settings; tasks and follow-ups on Home and Outreach.",
   };
 }
 
@@ -429,10 +626,11 @@ export function unavailableResponse(reason: string): AskResponse {
   return {
     status: "unavailable",
     mode: "unavailable",
-    answer: `Ask newwin's AI features are unavailable (${reason}). Database search still works — try a company name, an NCT id, or "recruiting KRAS trials in pancreatic cancer".`,
+    answer: `Ask newwin's AI features are unavailable (${reason}). ClinicalTrials.gov search still works — try a biomarker, a disease, or an NCT id.`,
     workspaceNote: null,
     cards: [],
     sources: [],
+    suggestions: [],
     conversationId: null,
     meta: {
       intent: "unavailable",

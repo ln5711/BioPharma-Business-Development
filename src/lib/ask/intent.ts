@@ -9,20 +9,24 @@ import { anthropic } from "@/lib/llm";
  * in the question always wins.
  */
 export const IntentSchema = z.object({
-  intent: z.enum([
-    "company_developments", // "what changed at X"
-    "trial_search", // "find recruiting KRAS trials in pancreatic cancer"
-    "compare_trials", // "compare these two trials"
-    "overdue_tasks", // "which follow-ups are overdue"
-    "draft_outreach", // "draft an email about the second result"
-    "keyword_search", // anything else
-  ]),
+  /**
+   * newwin is a research assistant first: `public_research` is the DEFAULT for
+   * anything about the outside world. `personal` is only for the signed-in
+   * user's own saved records. `compare_trials` compares specific NCT ids.
+   */
+  intent: z.enum(["public_research", "personal", "compare_trials", "draft_outreach"]),
+  /** For `personal`: which of the user's own things they're asking about. */
+  personalKind: z
+    .enum(["priorities", "contacts", "overdue_tasks", "drafts", "tasks", "general"])
+    .default("general"),
   companies: z.array(z.string().max(120)).max(6).default([]),
   assets: z.array(z.string().max(120)).max(6).default([]),
   biomarkers: z.array(z.string().max(80)).max(8).default([]),
   indications: z.array(z.string().max(120)).max(6).default([]),
   /** Free-text topic words like "oncology", "pipeline", "regulatory". */
   topics: z.array(z.string().max(60)).max(6).default([]),
+  /** e.g. "leaders", "CMO", "bioinformatics", "medical affairs". */
+  personRoles: z.array(z.string().max(60)).max(4).default([]),
   phases: z
     .array(z.enum(["1", "1/2", "2", "2/3", "3", "4"]))
     .max(6)
@@ -34,7 +38,10 @@ export const IntentSchema = z.object({
   nctIds: z.array(z.string().regex(/^NCT\d{8}$/i)).max(6).default([]),
   /** Days back the user is asking about; null = no explicit timeframe. */
   timeframeDays: z.number().int().positive().max(3650).nullable().default(null),
-  /** The user explicitly asked to look beyond the saved database. */
+  /**
+   * True when the query clearly wants CURRENT news / announcements (steers the
+   * research toward recency). Public research always runs regardless.
+   */
   wantsExternalResearch: z.boolean().default(false),
   /** For follow-ups that reference an earlier result, e.g. "the second one". */
   refersToPreviousResult: z.number().int().positive().max(20).nullable().default(null),
@@ -192,40 +199,61 @@ export function parseIntentHeuristic(query: string, ctx: IntentContext): AskInte
   };
   const refersToPreviousResult = refersMatch ? ordinal[refersMatch[1]] ?? null : null;
 
-  let intent: AskIntent["intent"] = "keyword_search";
-  if (/\b(compare|versus|vs\.?)\b/.test(lower) || nctIds.length >= 2) intent = "compare_trials";
-  else if (/draft (an? )?(email|outreach|message|note)/.test(lower)) intent = "draft_outreach";
-  else if (/overdue|behind on|past due/.test(lower) && /follow.?up|task|outreach/.test(lower))
-    intent = "overdue_tasks";
-  else if (
-    /\b(find|show|list|search|which|recruiting)\b/.test(lower) &&
-    /\btrial|study|studies\b/.test(lower)
-  )
-    intent = "trial_search";
-  else if (companies.size > 0 && /(chang|updat|develop|news|happen|announc|move)/.test(lower))
-    intent = "company_developments";
-  else if (companies.size > 0 && (timeframeDays || /recent/.test(lower)))
-    intent = "company_developments";
+  // Person-role words for "who leads X" style queries.
+  const personRoles = [
+    ...new Set(
+      [
+        ...q.matchAll(
+          /\b(leaders?|executives?|heads? of [a-z ]{2,30}|chief [a-z ]{2,20}|c[a-z]o\b|vp[a-z ]{0,20}|directors?|bioinformatics|medical affairs|business development|clinical development|regulatory affairs|principal investigators?)\b/gi,
+        ),
+      ].map((mm) => mm[1].toLowerCase().trim()),
+    ),
+  ].filter((r) => r && r !== "leaders" ? true : true);
 
-  // A trial page + a "what changed" question → that trial's changes.
-  if (ctx.contextNctId && intent === "keyword_search" && /(chang|updat|recent|new)/.test(lower)) {
-    intent = "compare_trials"; // single-trial detail handled by the pipeline
+  // ── classify ────────────────────────────────────────────────────────────
+  // Default: everything about the outside world is public research.
+  let intent: AskIntent["intent"] = "public_research";
+  let personalKind: AskIntent["personalKind"] = "general";
+
+  const isPersonal =
+    /\bmy\b/.test(lower) ||
+    /\b(assigned to me|i (saved|added|logged|drafted))\b/.test(lower) ||
+    (/\boverdue\b/.test(lower) && /follow.?ups?|tasks?|outreach/.test(lower));
+
+  if (/\b(compare|versus|vs\.?)\b/.test(lower) || nctIds.length >= 2) {
+    intent = "compare_trials";
+  } else if (/draft (an? )?(email|outreach|message|note)/.test(lower)) {
+    intent = "draft_outreach";
+  } else if (isPersonal) {
+    intent = "personal";
+    if (/\boverdue\b|follow.?ups?/.test(lower)) personalKind = "overdue_tasks";
+    else if (/\bpriorit/.test(lower)) personalKind = "priorities";
+    else if (/\b(contact|stakeholder|relationship)/.test(lower)) personalKind = "contacts";
+    else if (/\b(draft|drafted)/.test(lower)) personalKind = "drafts";
+    else if (/\btask/.test(lower)) personalKind = "tasks";
+  }
+
+  // A trial page + "what changed" → compare that trial.
+  if (ctx.contextNctId && intent === "public_research" && /(chang|updat|recent|new)/.test(lower)) {
+    intent = "compare_trials";
     if (!nctIds.includes(ctx.contextNctId)) nctIds.push(ctx.contextNctId);
   }
 
   return IntentSchema.parse({
     intent,
+    personalKind,
     companies: [...companies],
     assets: [],
     biomarkers,
     indications,
     topics: [...topics],
+    personRoles,
     phases,
     statuses,
     nctIds,
     timeframeDays,
     wantsExternalResearch:
-      /search the web|web search|look online|google |on the internet|latest[^.]{0,40}\b(news|updates?|announcements?|developments?|readouts?)\b|newest\b|recent(ly)? announc|press release|current(ly)?|up[ -]to[ -]date|beyond (the )?(saved )?(database|workspace|records)|external (source|research)/.test(
+      /latest|newest|recent(ly)?|this (week|month|quarter)|today|breaking|just announced|press release|news\b/.test(
         lower,
       ),
     refersToPreviousResult,
@@ -255,12 +283,13 @@ export async function extractIntent(
   try {
     const intent = await client.generateObject({
       system:
-        "You extract structured search intent for a clinical-trial / oncology BD assistant. " +
-        "Rules: an explicit company, biomarker, indication, phase or NCT id in the QUESTION always takes priority over vague words like 'today' or 'what changed'. " +
-        "Page context only fills gaps. Do not invent entities that are not present. " +
-        "companies holds ONLY the organisation name (e.g. 'Novartis'); put descriptor words like 'oncology', 'pipeline', 'regulatory', 'pharma' in topics, never in companies. " +
-        "timeframeDays: 1 for today/overnight, 7 for this week, 30 for this month, else null. " +
-        "Set wantsExternalResearch=true if the user asks to look beyond saved data / online / for the latest or recently-announced news / press releases.",
+        "You extract structured search intent for newwin, an oncology research assistant. " +
+        "newwin is a RESEARCH ASSISTANT FIRST: default `intent` to \"public_research\" for anything about the outside world (a company, drug, biomarker, disease, people at a company, or a general question) — even a single word like \"KRAS\". " +
+        "Use \"personal\" ONLY when the user asks about their OWN saved things ('my priorities', 'my contacts', 'overdue follow-ups'); set personalKind accordingly. " +
+        "Use \"compare_trials\" when comparing specific NCT ids. Use \"draft_outreach\" for 'draft an email…'. " +
+        "companies holds ONLY the organisation name ('Novartis'); put descriptors ('oncology', 'pipeline', 'regulatory', 'pharma') in topics. Put role words ('leaders', 'CMO', 'bioinformatics', 'medical affairs') in personRoles. " +
+        "Do not invent entities that are not present. timeframeDays: 1 today, 7 this week, 30 this month, else null. " +
+        "wantsExternalResearch=true when the query wants CURRENT news / latest / recent / press releases.",
       prompt:
         `Question: ${query}\n` +
         (ctx.contextCompany ? `Page context: viewing account "${ctx.contextCompany.name}"\n` : "") +
@@ -275,6 +304,7 @@ export async function extractIntent(
     // Never let the model drop an NCT id the user literally typed.
     for (const n of heuristic.nctIds) if (!intent.nctIds.includes(n)) intent.nctIds.push(n);
     for (const t of heuristic.topics) if (!intent.topics.includes(t)) intent.topics.push(t);
+    for (const r of heuristic.personRoles) if (!intent.personRoles.includes(r)) intent.personRoles.push(r);
     // Defensive: strip any descriptor the model left glued onto a company name.
     intent.companies = intent.companies.map((c) => {
       const parts = c.split(/\s+/);
@@ -283,8 +313,12 @@ export async function extractIntent(
       }
       return parts.join(" ");
     });
-    // The user asking for "latest / online" wins even if the model missed it.
     intent.wantsExternalResearch = intent.wantsExternalResearch || heuristic.wantsExternalResearch;
+    // A "personal" classification is only trusted when the heuristic also saw a
+    // first-person cue — otherwise default back to public research.
+    if (intent.intent === "personal" && heuristic.intent !== "personal") {
+      intent.intent = "public_research";
+    }
     return { intent: IntentSchema.parse(intent), source: "model" };
   } catch {
     return { intent: heuristic, source: "heuristic" };

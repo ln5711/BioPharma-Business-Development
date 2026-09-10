@@ -50,6 +50,13 @@
       "when": 1788996117919,
       "tag": "0006_parallel_dreaming_celestial",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789068029730,
+      "tag": "0007_fat_the_santerians",
+      "breakpoints": true
     }
   ]
 }

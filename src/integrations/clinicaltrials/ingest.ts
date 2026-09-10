@@ -156,6 +156,48 @@ export async function ingestWatchlist(
   return stats;
 }
 
+/**
+ * Import a SINGLE ClinicalTrials.gov study into a tenant's workspace by NCT id —
+ * the "Save to workspace" action from Ask newwin's public-research results.
+ * Reuses the full ingest path (normalize → snapshot → signal), so a saved trial
+ * behaves exactly like one picked up by a watchlist. Idempotent: saving the same
+ * NCT twice updates the existing row rather than duplicating it.
+ *
+ * Returns `{ imported, alreadyPresent }` — `imported` is false only when the
+ * study id does not resolve at ClinicalTrials.gov.
+ */
+export async function importTrialByNct(
+  db: Db,
+  tenantId: string,
+  nctId: string,
+): Promise<{ imported: boolean; alreadyPresent: boolean; nctId: string }> {
+  const id = nctId.trim().toUpperCase();
+  if (!/^NCT\d{8}$/.test(id)) throw new Error(`invalid NCT id: ${nctId}`);
+
+  const [existing] = await db
+    .select({ id: trials.id })
+    .from(trials)
+    .where(and(eq(trials.tenantId, tenantId), eq(trials.nctId, id)))
+    .limit(1);
+
+  const study = await new CtgovClient().fetchOne(id);
+  if (!study) return { imported: false, alreadyPresent: !!existing, nctId: id };
+
+  const capability = await loadCapability(db, tenantId);
+  const stats: IngestStats = {
+    fetched: 1,
+    newTrials: 0,
+    updatedTrials: 0,
+    unchangedTrials: 0,
+    trialChanges: 0,
+    signalsCreated: 0,
+    signalsUpdated: 0,
+    errors: 0,
+  };
+  await ingestStudy(db, tenantId, study, capability, undefined, stats);
+  return { imported: true, alreadyPresent: !!existing, nctId: id };
+}
+
 async function ingestStudy(
   db: Db,
   tenantId: string,

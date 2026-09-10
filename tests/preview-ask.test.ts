@@ -53,37 +53,76 @@ after(async () => {
   if (!SKIP) await closeDb();
 });
 
-test("relevant DB query returns results from seeded ClinicalTrials.gov data", opts, async () => {
-  const r = await runAsk({ query: "Find KRAS trials", ctx, page: {} });
-  console.log("  ->", r.status, r.meta.intent, "cards:", r.cards.length, "| retrieval:", JSON.stringify(r.meta.retrieval));
-  console.log("  answer:", r.answer.slice(0, 200).replace(/\n/g, " "));
+test("a bare biomarker is public research: sourced results, never a no-results wall", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+  const r = await runAsk({ query: "KRAS", ctx, page: {} });
+  console.log("  ->", r.status, r.meta.intent, "mode:", r.mode, "cards:", r.cards.length, "| retrieval:", JSON.stringify(r.meta.retrieval));
+  console.log("  answer:", r.answer.slice(0, 220).replace(/\n/g, " "));
+  assert.equal(r.meta.intent, "public_research");
   assert.equal(r.status, "ok");
-  assert.ok(r.cards.length > 0, "expected trial cards");
-  assert.ok(r.answer.length > 0);
+  assert.ok(!/no account called|no results|nothing in your workspace/i.test(r.answer), "must not be a no-results wall");
+  assert.ok(r.cards.some((c) => c.origin === "public"), "expected public research cards");
+  assert.ok(r.suggestions.length > 0, "a broad query should offer narrowing options");
+  assert.ok(r.answer.length > 150, "expected a real orientation briefing");
 });
 
-test("unknown company → explicit no-results, never an unrelated feed", opts, async () => {
-  const r = await runAsk({ query: "What changed at Nonexistent Corp this week?", ctx, page: {} });
-  console.log("  ->", r.status, "| answer:", r.answer.slice(0, 160).replace(/\n/g, " "));
-  assert.equal(r.status, "no_results");
-  assert.equal(r.cards.length, 0);
-  assert.match(r.answer, /no account called|not.*in your workspace|no developments/i);
-});
-
-test("nonsense keyword → explicit no-results", opts, async () => {
-  const r = await runAsk({ query: "zzzqqq unrelated gibberish token", ctx, page: {} });
-  assert.equal(r.status, "no_results");
-  assert.equal(r.cards.length, 0);
-});
-
-test("real Claude answer over workspace evidence (records request id + usage)", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
-  const r = await runAsk({ query: "Summarise the KRAS trial landscape in this workspace", ctx, page: {} });
-  console.log("  synthesis:", r.meta.synthesis, "| model:", r.meta.model, "| requestId:", r.meta.requestId, "| usage:", JSON.stringify(r.meta.usage));
+test("public research works on a zero-record topic (empty workspace never blocks it)", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+  const r = await runAsk({ query: "Novartis oncology", ctx, page: {} });
+  const external = r.sources.filter((s) => s.kind === "external");
+  console.log("  mode:", r.mode, "| synthesis:", r.meta.synthesis, "| researchRequestId:", r.meta.researchRequestId);
+  console.log("  citations:", external.length, "| workspaceNote:", r.workspaceNote);
+  assert.equal(r.meta.intent, "public_research");
+  assert.equal(r.mode, "external+ai");
   assert.equal(r.meta.synthesis, "ok");
-  assert.ok(r.meta.model, "expected a model id");
-  assert.ok(r.meta.requestId, "expected an Anthropic request id for the final answer");
-  assert.ok(r.answer.length > 120, "expected a substantive summary");
-  assert.ok(!/no matching records|AI summary unavailable/i.test(r.answer), "must not be the fallback text");
+  assert.ok(r.meta.researchRequestId, "expected the web_search call's Anthropic request id");
+  assert.ok(external.length > 0, "expected web_search citations");
+  assert.ok(r.answer.length > 200, "answer should be a real briefing");
+  assert.ok(
+    !/no account called|add it as a monitored company|ask me to search external/i.test(r.answer),
+    "the primary answer must NOT be a workspace no-results message",
+  );
+  assert.ok(r.workspaceNote && /workspace/i.test(r.workspaceNote), "workspace state is a separate note");
+});
+
+test("the caller's seeded records surface alongside public research, clearly separated", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+  const r = await runAsk({ query: "KRAS G12C trials in pancreatic cancer", ctx, page: {} });
+  console.log("  public cards:", r.cards.filter((c) => c.origin === "public").length,
+    "| workspace cards:", r.cards.filter((c) => c.origin === "workspace").length);
+  assert.equal(r.meta.intent, "public_research");
+  assert.ok(r.cards.some((c) => c.origin === "workspace"), "seeded KRAS trials should appear as workspace-origin cards");
+  assert.ok(r.workspaceNote && /related saved record/i.test(r.workspaceNote));
+});
+
+test("a nonsense keyword never substitutes an unrelated feed", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+  const r = await runAsk({ query: "zzzqqq unrelated gibberish token", ctx, page: {} });
+  assert.equal(r.meta.intent, "public_research");
+  assert.ok(!r.cards.some((c) => c.origin === "workspace"), "no workspace cards for a term nothing matches");
+});
+
+test("a personal request stays scoped to the signed-in user", opts, async () => {
+  const r = await runAsk({ query: "What are my priorities?", ctx, page: {} });
+  console.log("  ->", r.status, r.meta.intent, "| answer:", r.answer.slice(0, 160).replace(/\n/g, " "));
+  assert.equal(r.meta.intent, "personal");
+  assert.ok(r.cards.every((c) => c.origin === "workspace"), "personal answers only cite the user's own records");
+  assert.ok(!/clinicaltrials\.gov|web sources/i.test(r.answer), "a personal request must not run public web search");
+});
+
+test("Save action persists a public trial into the workspace", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+  const r = await runAsk({ query: "SHP2 inhibitor trials", ctx, page: {} });
+  const saveable = r.cards.find((c) => c.save?.kind === "trial");
+  assert.ok(saveable?.save, "expected at least one public trial card with a Save action");
+  const nctId = saveable!.save!.payload.nctId;
+  const { importTrialByNct } = await import("@/integrations/clinicaltrials/ingest");
+  const { getDb } = await import("@/db");
+  const db = await getDb();
+  const res = await importTrialByNct(db, ctx.tenantId, nctId);
+  console.log("  saved", nctId, "->", JSON.stringify(res));
+  assert.ok(res.imported, "trial should import from ClinicalTrials.gov");
+  // It is now findable in the workspace.
+  const again = await runAsk({ query: `trial ${nctId}`, ctx, page: {} });
+  assert.ok(
+    JSON.stringify(again).includes(nctId),
+    "the saved trial should be retrievable after saving",
+  );
 });
 
 test("explicit web-search returns a SUBSTANTIVE dated summary, not a no-results message + links", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
