@@ -251,7 +251,16 @@ function scoreTrial(p: ParsedQuery, r: TrialSearchResult): number {
 
   if (p.nctIds.includes(r.nctId)) s += 100;
   for (const a of p.assets) if (hay.includes(a.toLowerCase())) s += 30;
-  for (const b of p.biomarkers) if (hay.includes(b.toLowerCase())) s += 22;
+  // biomarker match — reward a match in the STRONG fields (title / interventions /
+  // parsed biomarkers), only weakly credit a loose mention, and actively demote a
+  // row that never names the biomarker the user asked for.
+  const strong = `${r.title} ${r.interventions.join(" ")} ${r.biomarkers.join(" ")}`.toLowerCase();
+  for (const b of p.biomarkers) {
+    const bl = b.toLowerCase();
+    if (strong.includes(bl)) s += 26;
+    else if (hay.includes(bl)) s += 6;
+    else s -= 12;
+  }
   for (const c of p.companies) if ((r.sponsor ?? "").toLowerCase().includes(c.toLowerCase())) s += 25;
   else for (const c of p.companies) if (hay.includes(c.toLowerCase())) s += 10;
   for (const ind of p.indications) if (hay.includes(ind.split(" ")[0])) s += 12;
