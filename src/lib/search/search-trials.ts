@@ -133,7 +133,16 @@ async function searchLocal(
   }
   if (p.freshness.days != null) {
     const since = new Date(Date.now() - p.freshness.days * 86_400_000).toISOString();
-    conds.push(sql`coalesce(${trials.lastCtgovUpdate}, ${trials.firstPostedDate}) >= ${since}::timestamptz`);
+    // "new … today" filters on Study First Posted; "… updated today" on Last
+    // Update Posted; "latest …" on whichever is more recent. Never on our
+    // import/refresh date.
+    if (p.freshness.kind === "posted") {
+      conds.push(sql`${trials.firstPostedDate} >= ${since}::timestamptz`);
+    } else if (p.freshness.kind === "updated") {
+      conds.push(sql`${trials.lastCtgovUpdate} >= ${since}::timestamptz`);
+    } else {
+      conds.push(sql`coalesce(${trials.lastCtgovUpdate}, ${trials.firstPostedDate}) >= ${since}::timestamptz`);
+    }
   }
 
   const rows = (await db
@@ -221,7 +230,9 @@ async function searchLive(
     const since = new Date(Date.now() - p.freshness.days * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    advanced.push(`AREA[LastUpdatePostDate]RANGE[${since},MAX]`);
+    // "new" → Study First Posted; "updated"/"latest" → Last Update Posted.
+    const field = p.freshness.kind === "posted" ? "StudyFirstPostDate" : "LastUpdatePostDate";
+    advanced.push(`AREA[${field}]RANGE[${since},MAX]`);
   }
   const phaseTokens = [...new Set(p.phases.flatMap((ph) => PHASE_TO_CTGOV[ph]))];
 
@@ -280,10 +291,21 @@ function scoreTrial(p: ParsedQuery, r: TrialSearchResult): number {
   if (!p.statuses.length && r.status === "recruiting") s += 5;
   if (p.phases.length && p.phases.map(String).includes(r.phase)) s += 8;
 
-  // recency
-  const upd = r.lastUpdate ? Date.parse(r.lastUpdate) : 0;
-  if (upd) {
-    const ageDays = (Date.now() - upd) / 86_400_000;
+  // recency — score against the date the query actually asked about:
+  //   "new …"     → Study First Posted
+  //   "… updated" → Last Update Posted
+  //   "latest"/-  → whichever is more recent
+  // NEVER our import/refresh date.
+  const postedMs = r.firstPosted ? Date.parse(r.firstPosted) : 0;
+  const updMs = r.lastUpdate ? Date.parse(r.lastUpdate) : 0;
+  const recencyMs =
+    p.freshness.kind === "posted"
+      ? postedMs
+      : p.freshness.kind === "updated"
+        ? updMs
+        : Math.max(postedMs, updMs);
+  if (recencyMs) {
+    const ageDays = (Date.now() - recencyMs) / 86_400_000;
     if (ageDays < 7) s += 14;
     else if (ageDays < 30) s += 10;
     else if (ageDays < 120) s += 5;
@@ -315,6 +337,12 @@ function rowToResult(r: Row, inWorkspace: boolean, source: TrialSearchResult["so
     summary: r.commercialSummary ?? null,
     lastUpdate: iso(r.lastCtgovUpdate),
     firstPosted: iso(r.firstPostedDate),
+    // "posted" when CT.gov has never revised the study since it went public.
+    recencyKind:
+      r.lastCtgovUpdate && r.firstPostedDate &&
+      iso(r.lastCtgovUpdate) !== iso(r.firstPostedDate)
+        ? "updated"
+        : "posted",
     source,
     inWorkspace,
     url: `https://clinicaltrials.gov/study/${r.nctId}`,
@@ -458,9 +486,17 @@ export async function searchTrialsHybrid(
     return sciOk && coOk;
   });
 
+  const tieDate = (r: TrialSearchResult) =>
+    p.freshness.kind === "posted"
+      ? r.firstPosted ?? ""
+      : p.freshness.kind === "updated"
+        ? r.lastUpdate ?? ""
+        : (r.lastUpdate ?? "") > (r.firstPosted ?? "")
+          ? r.lastUpdate ?? ""
+          : r.firstPosted ?? "";
   const results = (gated.length ? gated : [...merged.values()])
     .map((r) => ({ ...r, score: scoreTrial(p, r) }))
-    .sort((a, b) => b.score - a.score || (b.lastUpdate ?? "").localeCompare(a.lastUpdate ?? ""))
+    .sort((a, b) => b.score - a.score || tieDate(b).localeCompare(tieDate(a)))
     .slice(0, limit);
 
   // opportunistic persistence of live-only trials that surfaced in the results

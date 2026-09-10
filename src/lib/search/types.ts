@@ -48,6 +48,13 @@ export interface Freshness {
   wants: boolean;
   /** They specifically said "updated" / "changed" — prefer CT.gov update date. */
   updatedEmphasis: boolean;
+  /**
+   * Which CT.gov date the window applies to:
+   *  - "posted"  → Study First Posted (a genuinely NEW trial)  — "new … today"
+   *  - "updated" → Last Update Posted (real CT.gov activity)     — "… updated today"
+   *  - "any"     → most recent of the two, sorted by recency     — "latest …"
+   */
+  kind: "posted" | "updated" | "any";
   /** Human label for the UI ("today", "this week", …). */
   label: string | null;
 }
@@ -94,9 +101,12 @@ export interface TrialSearchResult {
   /** short testing-language flags: "molecular eligibility", "ctDNA", … */
   flags: string[];
   summary: string | null;
-  /** most recent real-world date we can cite (CT.gov last update) */
+  /** ClinicalTrials.gov "Last Update Posted" */
   lastUpdate: string | null;
+  /** ClinicalTrials.gov "Study First Posted" */
   firstPosted: string | null;
+  /** whether this row's CT.gov recency is a fresh posting or a later update */
+  recencyKind: "posted" | "updated";
   /** where this row was resolved from */
   source: "workspace" | "clinicaltrials.gov";
   /** true when the row also exists in the tenant's workspace */

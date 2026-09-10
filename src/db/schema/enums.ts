@@ -121,6 +121,13 @@ export const changeSeverityEnum = pgEnum("change_severity", [
 // ─── Signals ────────────────────────────────────────────────────────────────
 export const signalTypeEnum = pgEnum("signal_type", [
   "NEW_TRIAL",
+  /**
+   * A trial newwin only started tracking today — first posted on
+   * ClinicalTrials.gov outside the "new trial" recency window (historical
+   * import via search or a watchlist's first pass). NOT a newly announced
+   * trial; excluded from "new / changed" feeds.
+   */
+  "TRIAL_MONITORING_STARTED",
   "TRIAL_PHASE_CHANGE",
   "TRIAL_STATUS_CHANGE",
   "TRIAL_ENROLLMENT_CHANGE",

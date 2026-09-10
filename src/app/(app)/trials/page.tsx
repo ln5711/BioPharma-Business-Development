@@ -107,12 +107,14 @@ async function browseLocal(
 
   const orderBy =
     opts.sort === "added"
-      ? desc(trials.firstSeenAt)
+      ? desc(trials.firstSeenAt) // when newwin saved it — an explicit choice
       : opts.sort === "sponsor"
         ? sql`${trials.sponsorName} asc nulls last`
         : opts.sort === "phase"
           ? desc(trials.phase)
-          : desc(sql`coalesce(${trials.lastCtgovUpdate}, ${trials.firstPostedDate}, ${trials.firstSeenAt})`);
+          // "Recently updated" ranks on real ClinicalTrials.gov activity only —
+          // never on newwin's import/refresh date.
+          : desc(sql`coalesce(${trials.lastCtgovUpdate}, ${trials.firstPostedDate})`);
 
   const rows = await db
     .select({

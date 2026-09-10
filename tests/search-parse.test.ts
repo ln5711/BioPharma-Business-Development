@@ -81,6 +81,20 @@ test("'what changed in KRAS this week' → signals intent + 7-day freshness", ()
   assert.equal(p.intents.priorities, false);
 });
 
+test("freshness KIND: new/updated/latest are not equivalent", () => {
+  assert.equal(parseQuery("new KRAS trials today").freshness.kind, "posted");
+  assert.equal(parseQuery("KRAS trials today").freshness.kind, "any");
+  assert.equal(parseQuery("KRAS trials updated today").freshness.kind, "updated");
+  assert.equal(parseQuery("latest KRAS trials").freshness.kind, "any");
+  assert.equal(parseQuery("KRAS trials updated this week").freshness.kind, "updated");
+  assert.equal(parseQuery("new oncology trials this week").freshness.kind, "posted");
+  // "updated" wins when both cue words appear
+  assert.equal(parseQuery("new KRAS trials updated today").freshness.kind, "updated");
+  // day windows still parse alongside the kind
+  assert.equal(parseQuery("new KRAS trials today").freshness.days, 1);
+  assert.equal(parseQuery("KRAS trials updated this week").freshness.days, 7);
+});
+
 test("'what should I focus on today?' → priorities ONLY (no entity)", () => {
   const p = parseQuery("what should I focus on today?");
   assert.equal(p.intents.priorities, true);

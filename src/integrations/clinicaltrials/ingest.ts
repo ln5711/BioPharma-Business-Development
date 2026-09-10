@@ -35,6 +35,13 @@ export interface IngestStats {
 const STUDY_URL = (nct: string) => `https://clinicaltrials.gov/study/${nct}`;
 
 /**
+ * How recently a trial must have been FIRST POSTED on ClinicalTrials.gov to
+ * count as a genuine "New trial" signal. Anything older that newwin imports
+ * today is a `TRIAL_MONITORING_STARTED` bookkeeping event instead. Configurable.
+ */
+export const NEW_TRIAL_RECENCY_DAYS = Number(process.env.NEW_TRIAL_RECENCY_DAYS ?? 45);
+
+/**
  * Full ClinicalTrials.gov ingestion pass for one tenant watchlist
  * (spec §6 / §58 / §116). fetch → normalize → resolveEntities → snapshot →
  * detectChanges → emitSignals. Idempotent: an unchanged record on the next
@@ -284,32 +291,36 @@ async function ingestStudy(
 
     // Distinguish a genuinely new posting from a historical trial we are just
     // now importing. `firstPostedDate` = when ClinicalTrials.gov first published
-    // it; if that is well in the past, this is "added to the workspace", not
-    // "newly announced". The signal's sourceDate is the real first-posted date
-    // so time-window queries ("this week") behave correctly.
+    // the study. If that is inside NEW_TRIAL_RECENCY_DAYS it is a real "new
+    // trial"; otherwise newwin simply STARTED MONITORING an existing study
+    // (via search or a watchlist's first pass) — a bookkeeping event, not a
+    // development. Both carry the true first-posted date as `sourceDate`.
     const firstPosted = next.firstPostedDate;
     const importDate = new Date();
-    const HISTORICAL_MS = 45 * 86_400_000;
     const isHistorical =
-      !!firstPosted && importDate.getTime() - firstPosted.getTime() > HISTORICAL_MS;
+      !firstPosted ||
+      importDate.getTime() - firstPosted.getTime() > NEW_TRIAL_RECENCY_DAYS * 86_400_000;
+    const isoDay = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "unknown");
     const phaseLabel = next.phase.replace(/_/g, " ");
     const factSummary = isHistorical
-      ? `Trial ${next.nctId} (${phaseLabel}, first posted on ClinicalTrials.gov ${firstPosted!
-          .toISOString()
-          .slice(0, 10)}) added to your monitored set. Sponsor: ${
-          next.sponsorName ?? "unknown"
-        }. "${next.title ?? ""}".`
-      : `New ${phaseLabel} trial ${next.nctId}${
-          firstPosted ? ` first posted ${firstPosted.toISOString().slice(0, 10)}` : ""
-        } by ${next.sponsorName ?? "unknown sponsor"}: "${next.title ?? ""}".`;
+      ? `Now monitoring ${next.nctId} (${phaseLabel}). First posted on ClinicalTrials.gov ${isoDay(
+          firstPosted,
+        )}; last CT.gov update ${isoDay(next.lastCtgovUpdate)}; imported into newwin ${isoDay(
+          importDate,
+        )}. Sponsor: ${next.sponsorName ?? "unknown"}. "${next.title ?? ""}".`
+      : `New ${phaseLabel} trial ${next.nctId} first posted ${isoDay(firstPosted)} by ${
+          next.sponsorName ?? "unknown sponsor"
+        }: "${next.title ?? ""}".`;
 
     const res = await emitSignal(db, {
       tenantId,
-      signalType: "NEW_TRIAL",
+      signalType: isHistorical ? "TRIAL_MONITORING_STARTED" : "NEW_TRIAL",
       organizationId,
       trial: trialCtx(trialRow.id, next),
       factSummary,
-      changeRelevance: isHistorical ? 35 : 65,
+      changeRelevance: isHistorical ? 20 : 65,
+      // `sourceDate` is the trial's real first-posted date for both — never the
+      // import/refresh date. Downstream renders it as "first posted", not "updated".
       sourceDate: firstPosted ?? next.lastCtgovUpdate,
       sourceUrl: STUDY_URL(next.nctId),
       capability,

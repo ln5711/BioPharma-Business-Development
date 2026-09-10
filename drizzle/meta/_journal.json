@@ -57,6 +57,13 @@
       "when": 1789068029730,
       "tag": "0007_fat_the_santerians",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789075493790,
+      "tag": "0008_lovely_vulcan",
+      "breakpoints": true
     }
   ]
 }

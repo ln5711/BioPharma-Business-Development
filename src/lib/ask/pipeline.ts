@@ -795,7 +795,7 @@ function short(iso: string): string {
 //  Structured-search → AskResponse
 // ═══════════════════════════════════════════════════════════════════════════
 
-function trialCard(t: TrialSearchResult): AskCard {
+function trialCard(t: TrialSearchResult, p?: ParsedQuery): AskCard {
   const bits = [
     t.phaseLabel !== "—" ? t.phaseLabel : null,
     t.statusLabel,
@@ -804,7 +804,13 @@ function trialCard(t: TrialSearchResult): AskCard {
     t.conditions[0] ?? null,
   ].filter(Boolean);
   const src = t.source === "workspace" ? "In your workspace" : "ClinicalTrials.gov";
-  const upd = t.lastUpdate ? ` · updated ${t.lastUpdate}` : "";
+  // State BOTH CT.gov dates explicitly, and lead with the one the query asked
+  // about ("new" → first posted; "updated"/other → last update).
+  const dateBits: string[] = [];
+  if (t.firstPosted) dateBits.push(`first posted ${t.firstPosted}`);
+  if (t.lastUpdate && t.lastUpdate !== t.firstPosted) dateBits.push(`CT.gov update ${t.lastUpdate}`);
+  else if (t.lastUpdate) dateBits.push("no CT.gov update since");
+  if (p?.freshness.kind === "posted") dateBits.reverse();
   return {
     kind: "trial",
     title: `${t.nctId} — ${t.title}`,
@@ -812,10 +818,10 @@ function trialCard(t: TrialSearchResult): AskCard {
     why: [
       ...(t.biomarkers.length ? [t.biomarkers.slice(0, 2).join("; ")] : []),
       ...(t.flags.length ? [t.flags.join(" · ")] : []),
-      `${src}${upd}`,
+      `${src} · ${dateBits.join(" · ")}`,
     ],
-    eventDate: t.lastUpdate,
-    eventDateKind: "source_update",
+    eventDate: p?.freshness.kind === "posted" ? t.firstPosted : t.lastUpdate,
+    eventDateKind: p?.freshness.kind === "posted" ? "first_posted" : "source_update",
     origin: t.inWorkspace ? "workspace" : "public",
     actions: [
       { label: "Open trial", href: t.recordUrl },
@@ -836,18 +842,23 @@ function summariseTrials(p: ParsedQuery, trials: TrialSearchResult[]): string {
     "your query";
   const recruiting = trials.filter((t) => t.status === "recruiting").length;
   const inWs = trials.filter((t) => t.inWorkspace).length;
-  const newest = trials
-    .map((t) => t.lastUpdate)
-    .filter(Boolean)
-    .sort()
-    .pop();
+  const usePosted = p.freshness.kind === "posted";
+  const dateField = (t: TrialSearchResult) => (usePosted ? t.firstPosted : t.lastUpdate);
+  const newest = trials.map(dateField).filter(Boolean).sort().pop();
   const parts = [
     `${trials.length} trial${trials.length === 1 ? "" : "s"} for ${subject}`,
     p.indications[0] ? `in ${p.indications[0]}` : "",
     recruiting ? `— ${recruiting} recruiting` : "",
   ].filter(Boolean);
   let s = parts.join(" ") + ".";
-  if (newest) s += ` Most recent ClinicalTrials.gov update ${newest}.`;
+  if (newest) {
+    s += usePosted
+      ? ` Most recently first posted on ClinicalTrials.gov ${newest}.`
+      : ` Most recent ClinicalTrials.gov "Last Update Posted" ${newest}.`;
+  }
+  if (p.freshness.wants && p.freshness.label) {
+    s += ` "${p.freshness.label}" here means ${usePosted ? "first posted" : "updated on ClinicalTrials.gov"} within that window — not when newwin fetched it.`;
+  }
   if (inWs) s += ` ${inWs} already in your workspace.`;
   else s += ` Save any result to add it to your workspace.`;
   return s;
@@ -892,7 +903,7 @@ async function buildSearchResponse(
 
   // Cards, grouped & ranked: trials, then companies, then signals, then people.
   const cards: AskCard[] = [
-    ...trials.map(trialCard),
+    ...trials.map((t) => trialCard(t, parsed)),
     ...companies.map(
       (c): AskCard => ({
         kind: "company",

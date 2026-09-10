@@ -1,7 +1,8 @@
 import "server-only";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, notInArray, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { commercialSignals, organizations, trials } from "@/db/schema";
+import { LANDSCAPE_ONLY_SIGNALS } from "@/lib/signals/taxonomy";
 import type { ParsedQuery, SignalSearchResult } from "./types";
 
 const likeArg = (s: string) => `%${s.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
@@ -39,7 +40,11 @@ export async function searchSignalsService(
     ];
   });
 
-  const conds = [eq(commercialSignals.tenantId, tenantId), or(...matchers)!];
+  const conds = [
+    eq(commercialSignals.tenantId, tenantId),
+    notInArray(commercialSignals.signalType, [...LANDSCAPE_ONLY_SIGNALS] as never[]),
+    or(...matchers)!,
+  ];
   if (p.freshness.days != null) {
     const since = new Date(Date.now() - p.freshness.days * 86_400_000).toISOString();
     conds.push(

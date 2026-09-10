@@ -178,6 +178,14 @@ function parseFreshness(lower: string): Freshness {
 
   const softRecency = /\b(recent(?:ly)?|latest|newest|new|current(?:ly)?|updated?|just\s+(?:announced|posted)|breaking)\b/.test(lower);
   const updatedEmphasis = /\b(updated?|changed?|amend(?:ed|ment)|revised?)\b/.test(lower);
+  // "new … today" = first posted; "… updated today" = last CT.gov update;
+  // "latest …" = whichever is more recent. "updated" wins when both words appear.
+  const postedEmphasis = /\b(new(?:ly)?|just\s+(?:posted|added|listed)|first\s+posted|first-in-human)\b/.test(lower);
+  const kind: "posted" | "updated" | "any" = updatedEmphasis
+    ? "updated"
+    : postedEmphasis
+      ? "posted"
+      : "any";
 
   // "recent KRAS trials" with no explicit window → a sensible 60-day default so
   // the result set is current without being empty.
@@ -186,7 +194,7 @@ function parseFreshness(lower: string): Freshness {
     label = label ?? "recently";
   }
 
-  return { days, label, wants: softRecency || days !== null, updatedEmphasis };
+  return { days, label, kind, wants: softRecency || days !== null, updatedEmphasis };
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────

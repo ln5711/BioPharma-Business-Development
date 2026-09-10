@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ne, notInArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   commercialSignals,
@@ -9,6 +9,13 @@ import {
   trials,
   watchlists,
 } from "@/db/schema";
+import { LANDSCAPE_ONLY_SIGNALS } from "@/lib/signals/taxonomy";
+
+/** Bookkeeping signals ("Added to monitoring") never count as new activity. */
+const NOT_LANDSCAPE = notInArray(
+  commercialSignals.signalType,
+  [...LANDSCAPE_ONLY_SIGNALS] as never[],
+);
 
 export type SignalRow = typeof commercialSignals.$inferSelect & {
   organizationName: string | null;
@@ -33,6 +40,7 @@ export async function getTopSignals(
       and(
         eq(commercialSignals.tenantId, tenantId),
         ne(commercialSignals.status, "dismissed"),
+        NOT_LANDSCAPE,
         opts.minScore
           ? gte(commercialSignals.opportunityScore, opts.minScore)
           : undefined,
@@ -67,6 +75,7 @@ export async function getDashboardCounts(tenantId: string, sinceMs = 7 * 86_400_
       and(
         eq(commercialSignals.tenantId, tenantId),
         ne(commercialSignals.status, "dismissed"),
+        NOT_LANDSCAPE,
         gte(commercialSignals.detectedAt, since),
       ),
     );
@@ -78,6 +87,7 @@ export async function getDashboardCounts(tenantId: string, sinceMs = 7 * 86_400_
       and(
         eq(commercialSignals.tenantId, tenantId),
         ne(commercialSignals.status, "dismissed"),
+        NOT_LANDSCAPE,
         gte(commercialSignals.detectedAt, since),
         gte(commercialSignals.opportunityScore, 70),
       ),
@@ -100,6 +110,7 @@ export async function getDashboardCounts(tenantId: string, sinceMs = 7 * 86_400_
       and(
         eq(commercialSignals.tenantId, tenantId),
         ne(commercialSignals.status, "dismissed"),
+        NOT_LANDSCAPE,
         gte(commercialSignals.detectedAt, since),
       ),
     );

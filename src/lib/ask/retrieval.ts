@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gte, ilike, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNotNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import {
@@ -10,6 +10,7 @@ import {
   trialChanges,
   trials,
 } from "@/db/schema";
+import { LANDSCAPE_ONLY_SIGNALS } from "@/lib/signals/taxonomy";
 
 /**
  * Bounded, allowlisted retrieval for Ask newwin.
@@ -406,6 +407,7 @@ export async function searchSignals(
   const term = likeArg(p.term);
   const conds = [
     eq(commercialSignals.tenantId, ctx.tenantId),
+    notInArray(commercialSignals.signalType, [...LANDSCAPE_ONLY_SIGNALS] as never[]),
     or(
       ilike(commercialSignals.headline, term),
       ilike(commercialSignals.factSummary, term),
