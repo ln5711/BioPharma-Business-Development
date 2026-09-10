@@ -1135,17 +1135,25 @@ async function buildSearchResponse(
           drugs: t.interventions,
           conditions: t.conditions,
           biomarkers: t.biomarkers,
-          lastUpdate: t.lastUpdate,
+          firstPosted: t.firstPosted,
+          lastCtgovUpdate: t.lastUpdate,
           source: t.source,
         })),
         signals: signals.slice(0, 5).map((s) => ({ headline: s.headline, date: s.eventDate })),
         companies: companies.slice(0, 5).map((c) => c.name),
       };
+      const dateFocus =
+        parsed.freshness.kind === "posted"
+          ? "The query is about FIRST POSTING date — cite `firstPosted`, and say 'first posted' not 'updated'."
+          : parsed.freshness.kind === "updated"
+            ? "The query is about ClinicalTrials.gov UPDATE date — cite `lastCtgovUpdate`."
+            : "Cite whichever of `firstPosted` / `lastCtgovUpdate` is the more recent, and name which it is.";
       const rich = await client.generateTextRich({
         system:
           "You are Ask newwin. In 2-4 plain-prose sentences, summarise these STRUCTURED search results for an oncology BD user. " +
           "Only use the rows given — no outside knowledge, no invented drugs/dates. No markdown. " +
-          "Note phase spread, how many are recruiting, notable sponsors, and the most recent update date.",
+          "Note phase spread, how many are recruiting, and notable sponsors. " +
+          dateFocus,
         prompt: `QUERY: ${input.query}\n\nRESULTS:\n${JSON.stringify(rows, null, 1)}`,
         maxTokens: 500,
         temperature: 0.2,

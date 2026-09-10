@@ -33,7 +33,11 @@ export async function runSearch(
 
   const wantTrials = parsed.intents.trials || parsed.nctIds.length > 0;
   const wantCompanies = parsed.intents.companies || parsed.companies.length > 0;
-  const wantSignals = parsed.intents.signals;
+  // The workspace-signals lane cannot honour trial-structural constraints
+  // (phase, recruiting status) — so it does not run for a query that carries
+  // them. It stays for "what changed in KRAS this week" style news queries.
+  const wantSignals =
+    parsed.intents.signals && parsed.phases.length === 0 && parsed.statuses.length === 0;
   const wantPeople = parsed.intents.people;
 
   const [trialRes, companies, signals, people] = await Promise.all([

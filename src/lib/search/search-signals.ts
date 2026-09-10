@@ -72,7 +72,20 @@ export async function searchSignalsService(
     .limit(limit * 2);
 
   const lower = (s: string | null) => (s ?? "").toLowerCase();
-  const scored = rows.map((r) => {
+  // A named target / drug / sponsor is a hard constraint here too — a signal
+  // that mentions none of them is not a result for this query.
+  const must = [
+    ...p.biomarkers.map((x) => x.toLowerCase()),
+    ...p.assets.map((x) => x.toLowerCase()),
+    ...p.companies.map((x) => x.toLowerCase()),
+  ];
+  const scored = rows
+    .filter((r) => {
+      if (!must.length) return true;
+      const h = `${lower(r.headline)} ${lower(r.factSummary)} ${lower(r.org)} ${lower(r.nct)}`;
+      return must.some((m) => (m.includes(" ") ? h.includes(m) || h.includes(m.split(" ")[0]) : h.includes(m)));
+    })
+    .map((r) => {
     let s = r.opportunityScore ? r.opportunityScore / 20 : 0;
     const hay = `${lower(r.headline)} ${lower(r.factSummary)} ${lower(r.org)} ${lower(r.nct)}`;
     for (const b of p.biomarkers) if (hay.includes(b.toLowerCase())) s += 10;

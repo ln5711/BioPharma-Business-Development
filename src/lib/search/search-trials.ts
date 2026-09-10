@@ -443,16 +443,11 @@ export async function searchTrialsHybrid(
   }
 
   // Relevance gate: when the query names concrete entities, a result must
-  // actually be about them — this keeps ClinicalTrials.gov's loose free-text
-  // matches (a trial that merely *excludes* KRAS, say) and off-target workspace
-  // rows out of the answer. When BOTH a company and a science entity are named,
-  // require BOTH ("Amgen KRAS" → an Amgen-sponsored KRAS trial, not any KRAS
-  // trial). Exact NCT ids always pass.
-  const sciWants = [
-    ...p.biomarkers.map((b) => b.toLowerCase()),
-    ...p.assets.map((a) => a.toLowerCase()),
-    ...p.indications,
-  ];
+  // actually be about EACH kind that was named. "Amgen KRAS" → an Amgen-sponsored
+  // KRAS trial; "KRAS G12D pancreatic" → a KRAS G12D trial IN pancreatic cancer,
+  // not any KRAS trial. A named constraint is never broadened away. Exact NCT
+  // ids always pass.
+  const anyEntity = p.biomarkers.length + p.assets.length + p.indications.length + p.companies.length > 0;
   const coWants = p.companies.map((c) => c.toLowerCase());
   const nctSet = new Set(p.nctIds);
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -461,7 +456,7 @@ export async function searchTrialsHybrid(
     return new RegExp(`(?<![a-z0-9])${esc(needle)}`, "i").test(hay);
   };
   const gated = [...merged.values()].filter((r) => {
-    if (!sciWants.length && !coWants.length) return true;
+    if (!anyEntity) return true;
     if (nctSet.has(r.nctId)) return true;
     // STRONG identity fields only: title, sponsor, intervention/asset, condition.
     // Eligibility-derived text (`r.biomarkers` = biomarker_requirements) and the
@@ -477,13 +472,14 @@ export async function searchTrialsHybrid(
       GENE_SYMBOL.test(w.toUpperCase()) && w === w.toUpperCase()
         ? new RegExp(`(?<![A-Za-z0-9])${esc(w)}`).test(raw)
         : hit(w.toLowerCase(), raw.toLowerCase());
-    const sciOk =
-      !sciWants.length ||
+    // Each named entity KIND must be satisfied — no OR across kinds.
+    const bioAssetOk =
+      !(p.biomarkers.length + p.assets.length) ||
       p.biomarkers.some((b) => wantHit(b, strongRaw)) ||
-      p.assets.some((a) => hit(a.toLowerCase(), strongHay)) ||
-      p.indications.some((i) => hit(i, strongHay));
+      p.assets.some((a) => hit(a.toLowerCase(), strongHay));
+    const indOk = !p.indications.length || p.indications.some((i) => hit(i, strongHay));
     const coOk = !coWants.length || coWants.some((w) => hit(w, coHay));
-    return sciOk && coOk;
+    return bioAssetOk && indOk && coOk;
   });
 
   const tieDate = (r: TrialSearchResult) =>
@@ -494,7 +490,9 @@ export async function searchTrialsHybrid(
         : (r.lastUpdate ?? "") > (r.firstPosted ?? "")
           ? r.lastUpdate ?? ""
           : r.firstPosted ?? "";
-  const results = (gated.length ? gated : [...merged.values()])
+  // If the gate empties the set, the answer is an honest zero — never a
+  // silent broadening back to the ungated results.
+  const results = gated
     .map((r) => ({ ...r, score: scoreTrial(p, r) }))
     .sort((a, b) => b.score - a.score || tieDate(b).localeCompare(tieDate(a)))
     .slice(0, limit);
