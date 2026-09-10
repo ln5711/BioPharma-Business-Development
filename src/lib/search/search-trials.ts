@@ -46,6 +46,8 @@ const STATUS_TO_CTGOV: Record<TrialStatus, string> = {
 };
 
 const likeArg = (s: string) => `%${s.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+/** An all-caps gene/target symbol like EGFR, KRAS, HER2, TP53, MET, RET. */
+const GENE_SYMBOL = /^[A-Z][A-Z0-9]{1,5}$/;
 const iso = (d: Date | string | null | undefined) =>
   d ? new Date(d).toISOString().slice(0, 10) : null;
 
@@ -255,12 +257,17 @@ function scoreTrial(p: ParsedQuery, r: TrialSearchResult): number {
   // condition) is what ranks a trial up. A mention only in eligibility-derived
   // biomarker_requirements or the free-text summary is a WEAK boost — never a
   // strong signal on its own — and a biomarker named nowhere is demoted.
-  const strongF =
-    `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")}`.toLowerCase();
+  const strongRaw =
+    `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")}`;
+  const strongF = strongRaw.toLowerCase();
   const weakF = `${r.biomarkers.join(" ")} ${r.summary ?? ""}`.toLowerCase();
   for (const b of p.biomarkers) {
     const bl = b.toLowerCase();
-    if (strongF.includes(bl)) s += 26;
+    const inStrong =
+      GENE_SYMBOL.test(b.toUpperCase()) && b === b.toUpperCase()
+        ? new RegExp(`(?<![A-Za-z0-9])${b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(strongRaw)
+        : strongF.includes(bl);
+    if (inStrong) s += 26;
     else if (weakF.includes(bl)) s += 4;
     else s -= 12;
   }
@@ -420,9 +427,10 @@ export async function searchTrialsHybrid(
   ];
   const coWants = p.companies.map((c) => c.toLowerCase());
   const nctSet = new Set(p.nctIds);
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const hit = (needle: string, hay: string) => {
     if (needle.includes(" ")) return hay.includes(needle) || hay.includes(needle.split(" ")[0]);
-    return new RegExp(`(?<![a-z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(hay);
+    return new RegExp(`(?<![a-z0-9])${esc(needle)}`, "i").test(hay);
   };
   const gated = [...merged.values()].filter((r) => {
     if (!sciWants.length && !coWants.length) return true;
@@ -431,10 +439,21 @@ export async function searchTrialsHybrid(
     // Eligibility-derived text (`r.biomarkers` = biomarker_requirements) and the
     // free-text `r.summary` are NOT enough on their own — a trial that merely
     // lists KRAS among its exclusion criteria must not pass a "KRAS" query.
-    const strongHay =
-      `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")}`.toLowerCase();
+    const strongRaw =
+      `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")}`;
+    const strongHay = strongRaw.toLowerCase();
     const coHay = `${r.title} ${r.sponsor ?? ""}`.toLowerCase();
-    const sciOk = !sciWants.length || sciWants.some((w) => hit(w, strongHay));
+    // All-caps gene symbols (EGFR, KRAS, HER2) are matched case-sensitively so a
+    // renal-function "eGFR" can't stand in for the EGFR oncogene.
+    const wantHit = (w: string, raw: string) =>
+      GENE_SYMBOL.test(w.toUpperCase()) && w === w.toUpperCase()
+        ? new RegExp(`(?<![A-Za-z0-9])${esc(w)}`).test(raw)
+        : hit(w.toLowerCase(), raw.toLowerCase());
+    const sciOk =
+      !sciWants.length ||
+      p.biomarkers.some((b) => wantHit(b, strongRaw)) ||
+      p.assets.some((a) => hit(a.toLowerCase(), strongHay)) ||
+      p.indications.some((i) => hit(i, strongHay));
     const coOk = !coWants.length || coWants.some((w) => hit(w, coHay));
     return sciOk && coOk;
   });
