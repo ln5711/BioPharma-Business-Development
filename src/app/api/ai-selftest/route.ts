@@ -39,8 +39,49 @@ export async function GET(req: Request) {
   const pipelineQuery = url.searchParams.get("q")?.slice(0, 200) || null;
   // scratch=1 → run against a throwaway zero-record tenant, then delete it.
   const scratch = url.searchParams.get("scratch") === "1";
+  // trials=1 → prove the Trials-page bootstrap: a zero-row tenant still gets
+  // real, current ClinicalTrials.gov data.
+  const runTrialsBootstrap = url.searchParams.get("trials") === "1";
 
   const out: Record<string, unknown> = { ok: true, llm: status };
+
+  if (runTrialsBootstrap) {
+    try {
+      const { getDb } = await import("@/db");
+      const { tenants, users, organizationMembers } = await import("@/db/schema");
+      const { eq } = await import("drizzle-orm");
+      const { bootstrapOncologyTrials } = await import("@/lib/search/search-trials");
+      const db = await getDb();
+      const slug = `trials-selftest-${Date.now().toString(36)}`;
+      const [nt] = await db.insert(tenants).values({ name: slug, slug }).returning({ id: tenants.id });
+      const [nu] = await db
+        .insert(users)
+        .values({ tenantId: nt.id, email: `${slug}@selftest.local`, name: "S", role: "owner", passwordHash: "s:x" })
+        .returning({ id: users.id });
+      await db.insert(organizationMembers).values({ tenantId: nt.id, userId: nu.id, role: "owner" });
+      try {
+        const boot = await bootstrapOncologyTrials(nt.id, { fetch: 25, persist: 12 });
+        out.trialsBootstrap = {
+          scratchTenant: slug,
+          liveResults: boot.results.length,
+          persisted: boot.persisted,
+          error: boot.error,
+          sample: boot.results.slice(0, 5).map((t) => ({
+            nctId: t.nctId,
+            phase: t.phaseLabel,
+            status: t.statusLabel,
+            sponsor: t.sponsor,
+            lastUpdate: t.lastUpdate,
+          })),
+        };
+      } finally {
+        await db.delete(tenants).where(eq(tenants.id, nt.id)).catch(() => {});
+      }
+    } catch (e) {
+      out.ok = false;
+      out.trialsBootstrap = { error: (e as Error)?.message?.slice(0, 240) };
+    }
+  }
 
   // 0 — full runAsk() pipeline for an explicit web-search query, against a
   // workspace with ZERO relevant records (the exact reported scenario). Proves
