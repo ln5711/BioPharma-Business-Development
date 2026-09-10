@@ -134,7 +134,7 @@ export async function companyDevelopments(
   if (!org) return { company: null, evidence: [], total: 0 };
 
   const days = clampDays(p.sinceDays, 90);
-  const since = sinceFrom(days);
+  const sinceIso = sinceFrom(days).toISOString();
   const limit = p.limit ?? 20;
 
   // Signals for this org, ranked by EVENT date (sourceDate), falling back to detection.
@@ -151,7 +151,7 @@ export async function companyDevelopments(
       and(
         eq(commercialSignals.tenantId, ctx.tenantId),
         eq(commercialSignals.organizationId, p.orgId),
-        gte(sql`coalesce(${commercialSignals.sourceDate}, ${commercialSignals.detectedAt})`, since),
+        sql`coalesce(${commercialSignals.sourceDate}, ${commercialSignals.detectedAt}) >= ${sinceIso}::timestamptz`,
         ...(p.phases?.length ? [inArray(trials.phase, p.phases)] : []),
         ...(p.statuses?.length ? [inArray(trials.status, p.statuses)] : []),
       ),
@@ -188,7 +188,7 @@ export async function companyDevelopments(
       and(
         eq(trialChanges.tenantId, ctx.tenantId),
         eq(trials.sponsorOrganizationId, p.orgId),
-        gte(sql`coalesce(${trialChanges.sourceTimestamp}, ${trialChanges.detectedAt})`, since),
+        sql`coalesce(${trialChanges.sourceTimestamp}, ${trialChanges.detectedAt}) >= ${sinceIso}::timestamptz`,
       ),
     )
     .orderBy(desc(sql`coalesce(${trialChanges.sourceTimestamp}, ${trialChanges.detectedAt})`))
@@ -414,10 +414,9 @@ export async function searchSignals(
   ];
   if (p.sinceDays) {
     conds.push(
-      gte(
-        sql`coalesce(${commercialSignals.sourceDate}, ${commercialSignals.detectedAt})`,
-        sinceFrom(clampDays(p.sinceDays, 30)),
-      ),
+      sql`coalesce(${commercialSignals.sourceDate}, ${commercialSignals.detectedAt}) >= ${sinceFrom(
+        clampDays(p.sinceDays, 30),
+      ).toISOString()}::timestamptz`,
     );
   }
   const where = and(...conds);

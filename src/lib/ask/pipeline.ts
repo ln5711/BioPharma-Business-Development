@@ -394,8 +394,10 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
 
   // Honest final status.
   let finalStatus: AskResponse["status"];
-  if (wantsExternal) {
-    finalStatus = synthesis === "ok" ? "ok" : externalCitations.length > 0 ? "ok" : "error";
+  if (synthesis === "no_model" && wantsExternal) {
+    finalStatus = "unavailable";
+  } else if (wantsExternal) {
+    finalStatus = synthesis === "ok" || externalCitations.length > 0 ? "ok" : "error";
   } else {
     finalStatus = evidence.length === 0 ? "no_results" : synthesis === "failed" ? "error" : "ok";
   }
