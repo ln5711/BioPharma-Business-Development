@@ -392,7 +392,30 @@ export async function searchTrialsHybrid(
     merged.set(row.nctId, rowToResult(row, localByNct.has(row.nctId), "clinicaltrials.gov"));
   }
 
-  const results = [...merged.values()]
+  // Relevance gate: when the query names concrete entities, a result must
+  // actually mention one of them (or be an exact NCT / workspace row). This is
+  // what keeps ClinicalTrials.gov's loose free-text matches (a trial that merely
+  // *excludes* KRAS, say) out of the answer.
+  const wants = [
+    ...p.biomarkers.map((b) => b.toLowerCase()),
+    ...p.assets.map((a) => a.toLowerCase()),
+    ...p.indications,
+    ...p.companies.map((c) => c.toLowerCase()),
+  ];
+  const nctSet = new Set(p.nctIds);
+  const gated = [...merged.values()].filter((r) => {
+    if (!wants.length) return true;
+    if (nctSet.has(r.nctId) || r.inWorkspace) return true;
+    const hay =
+      `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")} ` +
+      `${r.biomarkers.join(" ")} ${r.summary ?? ""}`.toLowerCase();
+    return wants.some((w) => {
+      if (w.includes(" ")) return hay.includes(w) || hay.includes(w.split(" ")[0]);
+      return new RegExp(`(?<![a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(hay);
+    });
+  });
+
+  const results = (gated.length ? gated : [...merged.values()])
     .map((r) => ({ ...r, score: scoreTrial(p, r) }))
     .sort((a, b) => b.score - a.score || (b.lastUpdate ?? "").localeCompare(a.lastUpdate ?? ""))
     .slice(0, limit);
