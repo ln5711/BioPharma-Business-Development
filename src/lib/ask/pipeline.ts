@@ -95,8 +95,13 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
       }
     }
   } else if (intent.intent === "trial_search") {
+    // A token that's also a biomarker/asset is not a company filter.
+    const bioLower = new Set(
+      [...intent.biomarkers, ...intent.assets].map((s) => s.toLowerCase()),
+    );
+    const companyFilter = intent.companies.find((c) => !bioLower.has(c.toLowerCase()));
     const res = await searchTrials(input.ctx, {
-      company: intent.companies[0],
+      company: companyFilter,
       biomarker: intent.biomarkers[0],
       indication: intent.indications[0],
       phases: intent.phases.length ? mapPhases(intent.phases) : undefined,

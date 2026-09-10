@@ -90,41 +90,37 @@ export function parseIntentHeuristic(query: string, ctx: IntentContext): AskInte
 
   // Companies: "at/for/about <Proper Noun>", "<Proper Noun> news/trial/update",
   // then any other capitalised token that is not a sentence-initial stopword.
+  const CAP_STOP = new Set([
+    "any", "what", "whats", "which", "who", "show", "find", "list", "get",
+    "compare", "draft", "the", "a", "an", "did", "does", "do", "is", "are",
+    "has", "have", "give", "tell", "only", "phase", "recruiting", "active",
+    "trial", "trials", "study", "studies", "new", "recent", "latest", "all",
+    "search", "look", "in", "on", "for", "about", "me", "us", "our", "with",
+  ]);
   const companies = new Set<string>();
+  // An all-caps token with no lowercase letter is a gene / biomarker (KRAS,
+  // PD-L1, MSI-H), never a company name. Also strip leading verb/filler words.
+  const asCompany = (raw: string): string | null => {
+    let parts = raw.trim().split(/\s+/);
+    while (parts.length && CAP_STOP.has(parts[0].toLowerCase().replace(/[^a-z]/g, ""))) {
+      parts = parts.slice(1);
+    }
+    const s = parts.join(" ");
+    if (!s || !/[a-z]/.test(s) || /^NCT\d/i.test(s)) return null;
+    return s;
+  };
   for (const mm of q.matchAll(
     /(?:at|for|about|from|by)\s+([A-Z][A-Za-z0-9&.\-]+(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,3})/g,
   )) {
-    companies.add(mm[1].trim());
+    const c = asCompany(mm[1]);
+    if (c) companies.add(c);
   }
   for (const mm of q.matchAll(
-    /\b([A-Z][A-Za-z0-9&.\-]{1,}(?:\s+[A-Z][A-Za-z0-9&.\-]+){0,2})\s+(?:news|update|updates|trial|trials|announce\w*|develop\w*|pipeline)\b/gi,
+    /\b([A-Z][A-Za-z0-9&.\-]{1,}(?:\s+[A-Za-z0-9&.\-]+){0,2})\s+(?:news|update|updates|trial|trials|announce\w*|develop\w*|pipeline)\b/g,
   )) {
-    companies.add(mm[1].trim());
+    const c = asCompany(mm[1]);
+    if (c) companies.add(c);
   }
-  const CAP_STOP = new Set([
-    "any",
-    "what",
-    "which",
-    "who",
-    "show",
-    "find",
-    "list",
-    "compare",
-    "draft",
-    "the",
-    "did",
-    "has",
-    "have",
-    "give",
-    "tell",
-    "only",
-    "phase",
-    "recruiting",
-    "trial",
-    "trials",
-    "study",
-    "studies",
-  ]);
   for (const w of q.split(/\s+/)) {
     const clean = w.replace(/[^A-Za-z0-9&.\-]/g, "");
     if (clean.length < 3 || !/^[A-Z]/.test(clean)) continue;

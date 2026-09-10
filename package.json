@@ -20,7 +20,8 @@
     "db:backfill:dates": "tsx scripts/backfill-trial-dates.ts",
     "verify:anthropic": "tsx scripts/verify-anthropic.ts",
     "db:inspect": "tsx scripts/inspect-db.ts",
-    "db:baseline": "tsx scripts/baseline-migrations.ts"
+    "db:baseline": "tsx scripts/baseline-migrations.ts",
+    "db:seed:preview": "tsx scripts/seed-preview-data.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
