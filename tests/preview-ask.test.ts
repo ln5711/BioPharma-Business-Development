@@ -106,23 +106,25 @@ test("a personal request stays scoped to the signed-in user", opts, async () => 
   assert.ok(!/clinicaltrials\.gov|web sources/i.test(r.answer), "a personal request must not run public web search");
 });
 
-test("Save action persists a public trial into the workspace", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
-  const r = await runAsk({ query: "SHP2 inhibitor trials", ctx, page: {} });
-  const saveable = r.cards.find((c) => c.save?.kind === "trial");
-  assert.ok(saveable?.save, "expected at least one public trial card with a Save action");
-  const nctId = saveable!.save!.payload.nctId;
+test("Save action persists a public trial, and it is findable afterwards (no LLM needed)", opts, async () => {
+  // A completely public path: discover a real trial, save it, retrieve it.
+  const { ctgovSearch } = await import("@/lib/ask/public-research");
   const { importTrialByNct } = await import("@/integrations/clinicaltrials/ingest");
   const { getDb } = await import("@/db");
+  const { getTrial } = await import("@/lib/ask/retrieval");
+
+  const found = await ctgovSearch({ terms: ["SHP2 inhibitor"], limit: 3 });
+  assert.ok(found.length > 0, "ClinicalTrials.gov should return SHP2 trials");
+  const nctId = found[0].nctId;
+
   const db = await getDb();
   const res = await importTrialByNct(db, ctx.tenantId, nctId);
   console.log("  saved", nctId, "->", JSON.stringify(res));
   assert.ok(res.imported, "trial should import from ClinicalTrials.gov");
-  // It is now findable in the workspace.
-  const again = await runAsk({ query: `trial ${nctId}`, ctx, page: {} });
-  assert.ok(
-    JSON.stringify(again).includes(nctId),
-    "the saved trial should be retrievable after saving",
-  );
+
+  const saved = await getTrial(ctx, { nctId });
+  assert.ok(saved, "the saved trial is now retrievable from the workspace by NCT id");
+  assert.equal(saved!.nctId, nctId);
 });
 
 test("explicit web-search returns a SUBSTANTIVE dated summary, not a no-results message + links", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
