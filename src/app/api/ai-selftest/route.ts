@@ -34,13 +34,16 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const runWeb = url.searchParams.get("web") !== "0";
   const runPipeline = url.searchParams.get("pipeline") === "1";
+  // Optional: exercise runAsk() with an arbitrary query (the acceptance-test
+  // scenario is a BARE query like "KRAS" — no "search the web" prefix).
+  const pipelineQuery = url.searchParams.get("q")?.slice(0, 200) || null;
 
   const out: Record<string, unknown> = { ok: true, llm: status };
 
   // 0 — full runAsk() pipeline for an explicit web-search query, against a
   // workspace with ZERO relevant records (the exact reported scenario). Proves
   // the web summary is the primary answer, not the no-results message.
-  if (runPipeline) {
+  if (runPipeline || pipelineQuery) {
     try {
       const { runAsk } = await import("@/lib/ask/pipeline");
       const { getDb } = await import("@/db");
@@ -63,26 +66,37 @@ export async function GET(req: Request) {
       if (!t || !m) {
         out.pipeline = { skipped: "no preview-verify workspace found" };
       } else {
+        const query =
+          pipelineQuery ??
+          "Search the web for the latest FDA news on Novartis oncology developments";
         const r = await runAsk({
-          query: "Search the web for the latest FDA news on Novartis oncology developments",
+          query,
           ctx: { tenantId: t.id, userId: m.userId },
           page: {},
         });
         out.pipeline = {
+          query,
+          intent: r.meta.intent,
+          intentSource: r.meta.intentSource,
           status: r.status,
           mode: r.mode,
           synthesis: r.meta.synthesis,
           synthesisError: r.meta.synthesisError,
+          retrieval: r.meta.retrieval,
           researchRequestId: r.meta.researchRequestId,
           finalRequestId: r.meta.requestId,
           usage: r.meta.usage,
           answerChars: r.answer.length,
           answerLooksLikeNoResults:
-            /no account called|is in your workspace|add it as a monitored company|ask me to search external/i.test(
+            /no account called|is in your workspace|add it as a monitored company|ask me to search external|no results|nothing in your workspace/i.test(
               r.answer,
             ),
           answerPreview: r.answer.slice(0, 500),
+          suggestions: r.suggestions,
           workspaceNote: r.workspaceNote,
+          publicCardCount: r.cards.filter((c) => c.origin === "public").length,
+          workspaceCardCount: r.cards.filter((c) => c.origin === "workspace").length,
+          cardsWithSaveAction: r.cards.filter((c) => !!c.save).map((c) => c.save!.kind),
           externalCitationCount: r.sources.filter((s) => s.kind === "external").length,
         };
       }
