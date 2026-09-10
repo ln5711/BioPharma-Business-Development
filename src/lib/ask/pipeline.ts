@@ -235,7 +235,7 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
             "You research CURRENT developments using the web_search tool. " +
             "Prefer primary sources: company press releases and investor updates, ClinicalTrials.gov, " +
             "regulator notices (FDA/EMA), and peer-reviewed journals. " +
-            "Write a readable briefing of 6-12 sentences. Attribute each claim to its source and give the date. " +
+            "Write a readable briefing in plain prose paragraphs (NO markdown headings, bullets or bold) of 6-12 sentences. Attribute each claim to its source and give the date. " +
             "Group multiple reports of the same announcement together — do not repeat regional or syndicated versions. " +
             "Do not rely on training memory for anything time-sensitive.",
           prompt:
@@ -263,7 +263,7 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
             const rich = await client.generateTextRich({
               system:
                 "Summarise the retrieved web sources into a readable, dated, source-attributed briefing " +
-                "of 6-12 sentences about the exact question. Merge duplicate coverage of the same announcement. " +
+                "of 6-12 sentences (plain prose, no markdown) about the exact question. Merge duplicate coverage of the same announcement. " +
                 "Every claim must be traceable to one of the listed sources.",
               prompt:
                 `QUESTION: ${input.query}\n\nRETRIEVED SOURCES:\n` +
