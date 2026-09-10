@@ -30,7 +30,12 @@ function unpooledUrl(): string | null {
 async function main() {
   const folder = "./drizzle";
 
-  if (usingPglite) {
+  // An explicit direct-connection override (e.g. MIGRATE_DATABASE_URL pointing
+  // at a Neon preview branch) always wins, even if no STORAGE_DATABASE_URL is
+  // set for the app runtime.
+  const override = unpooledUrl();
+
+  if (usingPglite && !override) {
     const { drizzle } = await import("drizzle-orm/pglite");
     const { migrate } = await import("drizzle-orm/pglite/migrator");
     const { PGlite } = await import("@electric-sql/pglite");
@@ -42,7 +47,7 @@ async function main() {
     return;
   }
 
-  const direct = unpooledUrl();
+  const direct = override;
   const url = direct ?? env.DATABASE_URL;
   if (!url) {
     throw new Error(
