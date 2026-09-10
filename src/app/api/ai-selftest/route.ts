@@ -37,6 +37,8 @@ export async function GET(req: Request) {
   // Optional: exercise runAsk() with an arbitrary query (the acceptance-test
   // scenario is a BARE query like "KRAS" — no "search the web" prefix).
   const pipelineQuery = url.searchParams.get("q")?.slice(0, 200) || null;
+  // scratch=1 → run against a throwaway zero-record tenant, then delete it.
+  const scratch = url.searchParams.get("scratch") === "1";
 
   const out: Record<string, unknown> = { ok: true, llm: status };
 
@@ -47,25 +49,43 @@ export async function GET(req: Request) {
     try {
       const { runAsk } = await import("@/lib/ask/pipeline");
       const { getDb } = await import("@/db");
-      const { tenants, organizationMembers } = await import("@/db/schema");
+      const { tenants, users, organizationMembers, userPreferences } = await import("@/db/schema");
       const { like, eq } = await import("drizzle-orm");
       const db = await getDb();
-      const [t] = await db
-        .select()
-        .from(tenants)
-        .where(like(tenants.slug, "preview-verify-%"))
-        .limit(1);
-      const [m] = t
-        ? await db
+
+      let t: { id: string; slug: string } | undefined;
+      let m: { userId: string } | undefined;
+      let scratchId: string | null = null;
+
+      if (scratch) {
+        const slug = `search-selftest-${Date.now().toString(36)}`;
+        const [nt] = await db.insert(tenants).values({ name: slug, slug }).returning({ id: tenants.id, slug: tenants.slug });
+        const [nu] = await db
+          .insert(users)
+          .values({ tenantId: nt.id, email: `${slug}@selftest.local`, name: "Selftest", role: "owner", passwordHash: "s:x" })
+          .returning({ id: users.id });
+        await db.insert(organizationMembers).values({ tenantId: nt.id, userId: nu.id, role: "owner" });
+        await db.insert(userPreferences).values({ userId: nu.id, tenantId: nt.id, priorities: [] });
+        t = nt;
+        m = { userId: nu.id };
+        scratchId = nt.id;
+      } else {
+        const [pt] = await db.select().from(tenants).where(like(tenants.slug, "preview-verify-%")).limit(1);
+        if (pt) {
+          const [pm] = await db
             .select()
             .from(organizationMembers)
-            .where(eq(organizationMembers.tenantId, t.id))
-            .limit(1)
-        : [undefined];
+            .where(eq(organizationMembers.tenantId, pt.id))
+            .limit(1);
+          t = pt;
+          m = pm ? { userId: pm.userId } : undefined;
+        }
+      }
 
       if (!t || !m) {
-        out.pipeline = { skipped: "no preview-verify workspace found" };
+        out.pipeline = { skipped: "no workspace available" };
       } else {
+        try {
         const query =
           pipelineQuery ??
           "Search the web for the latest FDA news on Novartis oncology developments";
@@ -76,6 +96,7 @@ export async function GET(req: Request) {
         });
         out.pipeline = {
           query,
+          scratchTenant: scratch ? t.slug : null,
           intent: r.meta.intent,
           intentSource: r.meta.intentSource,
           status: r.status,
@@ -94,11 +115,19 @@ export async function GET(req: Request) {
           answerPreview: r.answer.slice(0, 500),
           suggestions: r.suggestions,
           workspaceNote: r.workspaceNote,
+          cardKinds: r.cards.map((c) => c.kind),
+          cardTitles: r.cards.slice(0, 8).map((c) => c.title),
           publicCardCount: r.cards.filter((c) => c.origin === "public").length,
           workspaceCardCount: r.cards.filter((c) => c.origin === "workspace").length,
           cardsWithSaveAction: r.cards.filter((c) => !!c.save).map((c) => c.save!.kind),
+          sourcePreview: r.sources.slice(0, 8).map((s) => s.label),
           externalCitationCount: r.sources.filter((s) => s.kind === "external").length,
         };
+        } finally {
+          if (scratchId) {
+            await db.delete(tenants).where(eq(tenants.id, scratchId)).catch(() => {});
+          }
+        }
       }
     } catch (e) {
       out.ok = false;
