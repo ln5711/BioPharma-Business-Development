@@ -26,6 +26,7 @@ process.env.DATABASE_URL = "";
 process.env.PGLITE_DATA_DIR = mkdtempSync(join(tmpdir(), "nw-ask-"));
 process.env.LLM_PROVIDER = "mock"; // deterministic path — no network
 process.env.ANTHROPIC_API_KEY = "";
+process.env.SEARCH_DISABLE_LIVE = "1"; // keep the structured-search branch offline
 
 let client: any;
 let db: any;
@@ -97,50 +98,50 @@ before(async () => {
   }
 });
 
-test("an outside-world query is public_research and yields a usable outcome on an empty workspace", async () => {
-  // "… leaders" carries a person-role, which keeps the offline path off the
-  // live ClinicalTrials.gov call while still exercising the research branch.
+test("an entity/role query routes to structured SEARCH, never the Home feed", async () => {
   const res = await pipeline.runAsk({
     query: "Genmab bioinformatics leaders",
     ctx: T1,
     page: {},
   });
-  assert.equal(res.meta.intent, "public_research");
-  // AI is not configured here — say so honestly, do NOT fabricate a briefing.
-  assert.equal(res.meta.synthesis, "no_model");
-  assert.match(res.answer, /not configured|can't synthesise|cannot synthesise/i);
-  // Never the old workspace-first wall.
+  assert.equal(res.meta.intent, "search");
+  // offline (no model) → a deterministic result, never a fabricated briefing
+  assert.equal(res.mode, "database");
   assert.doesNotMatch(res.answer, /no account called/i);
-  // A missing saved record must not turn into an error status.
   assert.notEqual(res.status, "error");
-  // The workspace note is separate from the answer and honest about having nothing.
-  assert.ok(res.workspaceNote && /no saved records/i.test(res.workspaceNote));
 });
 
-test("workspace retrieval alongside public research is tenant-scoped", async () => {
-  // T2 asks about an org whose only records live in T1's tenant.
+test("freshness words do not hijack a search into the Home feed", async () => {
+  for (const q of ["KRAS trials today", "trials updated this week", "phase 3 KRAS trials"]) {
+    const res = await pipeline.runAsk({ query: q, ctx: T1, page: {} });
+    assert.equal(res.meta.intent, "search", q);
+  }
+});
+
+test("structured search stays tenant-scoped", async () => {
   const res = await pipeline.runAsk({
-    query: "AcmeBio medical affairs leaders",
+    query: "AcmeBio news this week",
     ctx: T2,
     page: {},
   });
-  assert.equal(res.meta.intent, "public_research");
-  const blob = JSON.stringify(res);
-  assert.ok(!blob.includes("AcmeBio starts Phase 2"), "T2 must not see T1's saved signal");
-  assert.ok(res.workspaceNote && /no saved records/i.test(res.workspaceNote));
+  assert.equal(res.meta.intent, "search");
+  assert.ok(
+    !JSON.stringify(res).includes("AcmeBio starts Phase 2"),
+    "T2 must not see T1's saved signal",
+  );
 });
 
-test("the caller's own related records DO surface next to public research", async () => {
+test("the caller's own signals surface in structured search", async () => {
   const res = await pipeline.runAsk({
-    query: "AcmeBio medical affairs leaders",
+    query: "AcmeBio news this week",
     ctx: T1,
     page: {},
   });
+  assert.equal(res.meta.intent, "search");
   assert.ok(
     res.cards.some((c) => c.origin === "workspace" && /AcmeBio starts Phase 2/i.test(c.title)),
     "T1's own signal should appear as a workspace-origin card",
   );
-  assert.ok(res.workspaceNote && /related saved record/i.test(res.workspaceNote));
 });
 
 test("'my priorities' is PERSONAL and scoped to the signed-in user", async () => {
@@ -160,10 +161,9 @@ test("'overdue follow-ups' is PERSONAL / overdue_tasks and honest when there are
   assert.equal(res.cards.length, 0);
 });
 
-test("a nonsense query never substitutes an unrelated feed", async () => {
+test("a nonsense query returns an honest empty result, no substituted feed", async () => {
   const res = await pipeline.runAsk({ query: "zzzqqq gibberish leaders", ctx: T1, page: {} });
-  assert.equal(res.meta.intent, "public_research");
-  // No workspace cards for a term nothing matches.
+  assert.equal(res.status, "no_results");
   assert.ok(!res.cards.some((c) => c.origin === "workspace"));
   assert.ok(!JSON.stringify(res).includes("AcmeBio starts Phase 2"));
 });

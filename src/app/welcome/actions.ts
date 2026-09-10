@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -232,6 +233,34 @@ export async function createAccount(
     return { ok: false, error: "Could not create the workspace. Please try again." };
   }
 
+  // Starter monitoring so a new tenant has functional intelligence immediately:
+  // watchlist rows now (no network), first ClinicalTrials.gov pull after the
+  // response is sent. Never blocks or fails signup.
+  try {
+    const { createStarterWatchlists } = await import("@/lib/onboarding/starter-monitoring");
+    const lists = await createStarterWatchlists(
+      db,
+      created.tenantId,
+      created.userId,
+      priorities.map((p) => p.text),
+    );
+    const tenantId = created.tenantId;
+    if (lists.length) {
+      after(async () => {
+        const { ingestWatchlist } = await import("@/integrations/clinicaltrials/ingest");
+        for (const wl of lists.slice(0, 3)) {
+          try {
+            await ingestWatchlist(db, { tenantId, watchlistId: wl.id, maxStudies: 40 });
+          } catch (err) {
+            console.error("[signup] starter ingest failed", wl.name, (err as Error).message);
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.error("[signup] starter monitoring setup failed", (err as Error).message);
+  }
+
   // Session + redirect happen only after a committed transaction, and the
   // redirect stays outside every try/catch.
   await createSession(created);
@@ -282,6 +311,31 @@ export async function completeOnboarding(
       target: userPreferences.userId,
       set: { priorities: buildPriorities(recIds, customs), onboardedAt: now, updatedAt: now },
     });
+
+  try {
+    const { createStarterWatchlists } = await import("@/lib/onboarding/starter-monitoring");
+    const lists = await createStarterWatchlists(
+      db,
+      auth.tenant.id,
+      auth.user.id,
+      buildPriorities(recIds, customs).map((p) => p.text),
+    );
+    const tenantId = auth.tenant.id;
+    if (lists.length) {
+      after(async () => {
+        const { ingestWatchlist } = await import("@/integrations/clinicaltrials/ingest");
+        for (const wl of lists.slice(0, 3)) {
+          try {
+            await ingestWatchlist(db, { tenantId, watchlistId: wl.id, maxStudies: 40 });
+          } catch (err) {
+            console.error("[onboarding] starter ingest failed", wl.name, (err as Error).message);
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.error("[onboarding] starter monitoring setup failed", (err as Error).message);
+  }
 
   revalidatePath("/", "layout");
   redirect("/");

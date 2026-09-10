@@ -64,9 +64,17 @@ async function run(req: Request) {
           watchlistId: wl.id,
           maxStudies: PER_RUN_STUDY_CAP,
         });
+        console.log(
+          `[cron:ctgov] tenant=${tenant.slug} watchlist="${wl.name}" fetched=${stats.fetched} ` +
+            `new=${stats.newTrials} updated=${stats.updatedTrials} unchanged=${stats.unchangedTrials} ` +
+            `changes=${stats.trialChanges} signals=${stats.signalsCreated}/${stats.signalsUpdated} errors=${stats.errors}`,
+        );
         results.push({ tenant: tenant.slug, watchlist: wl.name, stats });
       } catch (err) {
         failures += 1;
+        console.error(
+          `[cron:ctgov] tenant=${tenant.slug} watchlist="${wl.name}" FAILED: ${(err as Error).message}`,
+        );
         results.push({
           tenant: tenant.slug,
           watchlist: wl.name,
@@ -77,6 +85,9 @@ async function run(req: Request) {
   }
 
   const ok = failures === 0;
+  console.log(
+    `[cron:ctgov] done tenants=${allTenants.length} watchlists=${watchlistsRun} failures=${failures}`,
+  );
   await db
     .update(jobRuns)
     .set({

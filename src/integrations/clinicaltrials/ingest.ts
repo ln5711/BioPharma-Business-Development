@@ -198,6 +198,45 @@ export async function importTrialByNct(
   return { imported: true, alreadyPresent: !!existing, nctId: id };
 }
 
+/**
+ * Persist a batch of already-fetched ClinicalTrials.gov studies into a tenant's
+ * workspace — used by the search service to opportunistically save trials it
+ * pulled live so they are locally searchable next time. Bounded, best-effort:
+ * an error on one study does not abort the batch. Reuses the full ingest path
+ * (normalize → snapshot → diff → signal), so persisted rows are indistinguishable
+ * from watchlist-ingested ones.
+ */
+export async function ingestStudies(
+  db: Db,
+  tenantId: string,
+  studies: CtgovStudy[],
+  opts: { cap?: number } = {},
+): Promise<IngestStats> {
+  const stats: IngestStats = {
+    fetched: 0,
+    newTrials: 0,
+    updatedTrials: 0,
+    unchangedTrials: 0,
+    trialChanges: 0,
+    signalsCreated: 0,
+    signalsUpdated: 0,
+    errors: 0,
+  };
+  const cap = Math.max(0, Math.min(opts.cap ?? 15, studies.length));
+  if (cap === 0) return stats;
+  const capability = await loadCapability(db, tenantId);
+  for (const study of studies.slice(0, cap)) {
+    stats.fetched += 1;
+    try {
+      await ingestStudy(db, tenantId, study, capability, undefined, stats);
+    } catch (err) {
+      stats.errors += 1;
+      console.error("ctgov ingestStudies error", (err as Error).message);
+    }
+  }
+  return stats;
+}
+
 async function ingestStudy(
   db: Db,
   tenantId: string,
