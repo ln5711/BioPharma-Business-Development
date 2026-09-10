@@ -18,6 +18,7 @@ import {
   type CachedResearch,
 } from "./research-cache";
 import { runSearch } from "@/lib/search/search";
+import { searchTrialsHybrid } from "@/lib/search/search-trials";
 import { parseQuery } from "@/lib/search/parse-query";
 import type {
   ParsedQuery,
@@ -269,16 +270,37 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
       if (search.meta.upserted) retrieval.push({ tool: "search:upserted", count: search.meta.upserted });
     }
 
-    // Nothing structured AND we can do a web pass → fall through to it below.
-    const canWebFallback = !!client && status.webSearch;
-    if (total > 0 || !canWebFallback) {
-      return buildSearchResponse(input, parsed, search, {
-        client,
-        baseMeta,
-        retrieval,
-      });
+    if (total > 0) {
+      return buildSearchResponse(input, parsed, search, { client, baseMeta, retrieval });
     }
-    // else: fall through to PUBLIC RESEARCH (web) as the last resort.
+
+    // Zero results. If the query carried real trial constraints (a target,
+    // drug, sponsor, indication, phase, status, or a date window) and ran
+    // against live ClinicalTrials.gov, answer with an EXPLICIT constrained
+    // zero-result — never fall through to a broader search that would drop
+    // those constraints.
+    const isConstrainedTrialQuery =
+      (parsed.intents.trials || parsed.nctIds.length > 0) &&
+      (parsed.biomarkers.length > 0 ||
+        parsed.assets.length > 0 ||
+        parsed.companies.length > 0 ||
+        parsed.indications.length > 0 ||
+        parsed.phases.length > 0 ||
+        parsed.statuses.length > 0 ||
+        parsed.freshness.wants ||
+        parsed.nctIds.length > 0);
+
+    if (isConstrainedTrialQuery && search) {
+      retrieval.push({ tool: "search:constrained_zero", count: 0 });
+      return buildConstrainedZeroResult(input, parsed, { baseMeta, retrieval });
+    }
+
+    // Non-constrained (e.g. a bare people-role query) with a web option → fall
+    // through to PUBLIC RESEARCH as a genuine last resort.
+    const canWebFallback = !!client && status.webSearch;
+    if (!canWebFallback) {
+      return buildSearchResponse(input, parsed, search, { client, baseMeta, retrieval });
+    }
     retrieval.push({ tool: "search:empty_fallback_to_web", count: 0 });
   }
 
@@ -882,6 +904,127 @@ function searchSuggestions(p: ParsedQuery): string[] {
     out.push(`${c} oncology trials`, `${c} recruiting trials`, `${c} pipeline updates`);
   }
   return out.slice(0, 4);
+}
+
+const PHASE_WORD: Record<string, string> = {
+  early_phase_1: "Early Phase 1",
+  phase_1: "Phase 1",
+  phase_1_2: "Phase 1/2",
+  phase_2: "Phase 2",
+  phase_2_3: "Phase 2/3",
+  phase_3: "Phase 3",
+  phase_4: "Phase 4",
+};
+
+/** Describe the query's constraints in words, for a constrained zero-result. */
+function describeConstraints(p: ParsedQuery): { subject: string; window: string; dateVerb: string } {
+  const subjectBits: string[] = [];
+  if (p.statuses.includes("recruiting")) subjectBits.push("recruiting");
+  if (p.phases.length) subjectBits.push(p.phases.map((ph) => PHASE_WORD[ph] ?? ph).join("/"));
+  const entity =
+    [...p.assets, ...p.biomarkers].slice(0, 2).join(" / ") ||
+    p.companies[0] ||
+    "";
+  if (entity) subjectBits.push(entity);
+  subjectBits.push("trials");
+  if (p.companies[0] && entity !== p.companies[0]) subjectBits.push(`sponsored by ${p.companies[0]}`);
+  if (p.indications[0]) subjectBits.push(`in ${p.indications[0]}`);
+
+  const window =
+    p.freshness.label ??
+    (p.freshness.days != null ? `in the last ${p.freshness.days} days` : "");
+  const dateVerb =
+    p.freshness.kind === "posted"
+      ? "were first posted on ClinicalTrials.gov"
+      : p.freshness.kind === "updated"
+        ? "had a ClinicalTrials.gov update"
+        : "were found on ClinicalTrials.gov";
+
+  return { subject: subjectBits.filter(Boolean).join(" "), window, dateVerb };
+}
+
+/**
+ * A parsed, executed trial query that returned zero. Answer explicitly with the
+ * SAME constraints — never a broadened fallback. Optionally names the most
+ * recent records that would match if the date window were dropped, clearly
+ * flagged as alternatives (not matches), plus sibling phrasings as suggestions.
+ */
+async function buildConstrainedZeroResult(
+  input: AskPipelineInput,
+  parsed: ParsedQuery,
+  deps: { baseMeta: AskResponse["meta"]; retrieval: { tool: string; count: number }[] },
+): Promise<AskResponse> {
+  const { baseMeta } = deps;
+  const { subject, window, dateVerb } = describeConstraints(parsed);
+
+  // Relax ONLY the date window; keep target / sponsor / indication / phase /
+  // status so the alternates are still on-topic.
+  const relaxed: ParsedQuery = {
+    ...parsed,
+    freshness: { days: null, wants: false, updatedEmphasis: parsed.freshness.updatedEmphasis, kind: parsed.freshness.kind, label: null },
+  };
+  const alt = await searchTrialsHybrid(relaxed, {
+    tenantId: input.ctx.tenantId,
+    live: true,
+    persist: false,
+    limit: 5,
+  }).catch(() => null);
+  if (alt) deps.retrieval.push({ tool: "search:alternates_no_date", count: alt.results.length });
+
+  const dateOf = (t: TrialSearchResult) =>
+    parsed.freshness.kind === "posted" ? t.firstPosted : parsed.freshness.kind === "updated" ? t.lastUpdate : t.lastUpdate ?? t.firstPosted;
+  const named = (alt?.results ?? [])
+    .slice(0, 3)
+    .map((t) => `${t.nctId} (${dateOf(t) ?? "date n/a"})`)
+    .join(", ");
+
+  let answer =
+    `No ${subject} ${dateVerb}${window ? ` ${window}` : ""}.`;
+  if (named) {
+    const kindWord = parsed.freshness.kind === "posted" ? "first-posted" : parsed.freshness.kind === "updated" ? "updated" : "matching";
+    answer += ` The most recent ${kindWord} records (NOT matches for "${window || "that window"}"): ${named}.`;
+  }
+  // Sibling phrasings — clearly alternatives, not matches.
+  const alts: string[] = [];
+  const ent = [...parsed.assets, ...parsed.biomarkers].slice(0, 1).join("") || parsed.companies[0] || "these";
+  if (parsed.freshness.kind === "posted") alts.push(`${ent} trials updated ${parsed.freshness.label ?? "today"}`);
+  if (parsed.freshness.kind === "updated") alts.push(`new ${ent} trials ${parsed.freshness.label ?? "today"}`);
+  alts.push(`recent ${ent} trials`, `${ent} recruiting trials`);
+  answer += ` Alternatives: try "${alts[0]}".`;
+
+  const cards: AskCard[] = [];
+  const watchName =
+    parsed.assets[0] || parsed.biomarkers[0] || parsed.companies[0] || parsed.indications[0] || null;
+  if (watchName) {
+    cards.push({
+      kind: "monitor",
+      title: `Monitor "${watchName}"`,
+      subtitle: "Get notified when a matching ClinicalTrials.gov record appears on the daily refresh.",
+      origin: "public",
+      actions: [],
+      save: {
+        kind: "watchlist",
+        label: "Monitor this",
+        payload: {
+          name: watchName.slice(0, 60),
+          terms: [...parsed.biomarkers, ...parsed.assets, ...parsed.companies].join(","),
+          conditions: parsed.indications.join(","),
+        },
+      },
+    });
+  }
+
+  return {
+    status: "no_results",
+    mode: "database",
+    answer,
+    workspaceNote: null,
+    cards, // zero trial cards — nothing satisfies the query
+    sources: [],
+    suggestions: [...new Set(alts)].slice(0, 4),
+    conversationId: input.conversationId ?? null,
+    meta: { ...baseMeta, intent: "search", synthesis: "skipped" },
+  };
 }
 
 async function buildSearchResponse(

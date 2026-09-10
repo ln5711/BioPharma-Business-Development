@@ -118,6 +118,24 @@ test("freshness words do not hijack a search into the Home feed", async () => {
   }
 });
 
+test("a constrained trial query that returns zero → explicit constrained no-result, never a broadened fallback", async () => {
+  // Empty local DB + SEARCH_DISABLE_LIVE=1 → the KRAS/first-posted/today query
+  // matches nothing. It must answer with its own constraints, not fall through.
+  const res = await pipeline.runAsk({ query: "new KRAS trials today", ctx: T1, page: {} });
+  assert.equal(res.meta.intent, "search");
+  assert.equal(res.status, "no_results");
+  assert.equal(res.mode, "database");
+  assert.match(res.answer, /first posted on clinicaltrials\.gov/i);
+  assert.match(res.answer, /\btoday\b/i);
+  // No trial cards — nothing satisfied the query. (A Monitor action is allowed.)
+  assert.ok(!res.cards.some((c) => c.kind === "trial"), "no trial cards on a zero result");
+  // Did NOT defer to the broad web/loose-ctgov path.
+  assert.ok(!res.meta.retrieval.some((r) => r.tool === "search:empty_fallback_to_web"));
+  assert.ok(res.meta.retrieval.some((r) => r.tool === "search:constrained_zero"));
+  // Sibling phrasing offered as an alternative, not a match.
+  assert.ok(res.suggestions.some((s) => /updated/i.test(s)));
+});
+
 test("structured search stays tenant-scoped", async () => {
   const res = await pipeline.runAsk({
     query: "AcmeBio news this week",
