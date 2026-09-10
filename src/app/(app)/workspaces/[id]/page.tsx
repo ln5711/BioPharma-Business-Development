@@ -52,9 +52,9 @@ export default async function WorkspacePage({
         ← Workspaces
       </Link>
 
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-4 border-b pb-6" style={{ borderColor: "var(--hairline)" }}>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-4 border-b pb-6" style={{ borderColor: "rgba(150,185,255,.12)" }}>
         <div className="min-w-0">
-          <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".2em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
+          <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".2em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}>
             {TEMPLATE_META[w.template as keyof typeof TEMPLATE_META]?.label ?? w.template}
           </div>
           <h1 className="display-lg mt-3">{w.title}</h1>
@@ -76,8 +76,8 @@ export default async function WorkspacePage({
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(240px,1fr)]">
         <section>
-          <div className="mb-3 flex items-end justify-between border-b pb-2" style={{ borderColor: "var(--hairline)" }}>
-            <h2 className="text-[10.5px] uppercase" style={{ letterSpacing: ".2em", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
+          <div className="mb-3 flex items-end justify-between border-b pb-2" style={{ borderColor: "rgba(150,185,255,.12)" }}>
+            <h2 className="text-[10.5px] uppercase" style={{ letterSpacing: ".2em", color: "#B7BFD8", fontFamily: "var(--font-mono)" }}>
               newwin recommends — {doneCount}/{todos.length}
             </h2>
           </div>
@@ -94,7 +94,7 @@ export default async function WorkspacePage({
                   style={{
                     borderColor: it.done ? "transparent" : "var(--faint)",
                     background: it.done ? "var(--accent)" : "transparent",
-                    color: it.done ? "var(--accent-btn-ink)" : "transparent",
+                    color: it.done ? "#06101F" : "transparent",
                     boxShadow: it.done ? "var(--accent-glow)" : "none",
                   }}
                 >
@@ -113,9 +113,9 @@ export default async function WorkspacePage({
               name="title"
               required
               placeholder="Add a step…"
-              className="flex-1 rounded-[10px] border border-[var(--hairline)] bg-[var(--input-bg)] px-3 py-2.5 text-[13px] text-[var(--fg)] outline-none placeholder:text-[var(--placeholder)] focus:border-[var(--accent-border)]"
+              className="flex-1 rounded-[10px] border border-[rgba(150,185,255,.14)] bg-[rgba(10,8,22,.5)] px-3 py-2.5 text-[13px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--accent-border)]"
             />
-            <button className="rounded-[10px] border px-3.5 py-2.5 text-[12px] text-[var(--accent)]" style={{ borderColor: "var(--accent-border)", background: "var(--accent-tint)" }}>
+            <button className="rounded-[10px] border px-3.5 py-2.5 text-[12px] text-[#CDE9FF]" style={{ borderColor: "rgba(143,211,255,.3)", background: "rgba(143,211,255,.1)" }}>
               Add
             </button>
           </form>
@@ -150,9 +150,9 @@ export default async function WorkspacePage({
                       name="title"
                       required
                       placeholder="Add…"
-                      className="min-w-0 flex-1 rounded-[8px] border border-[var(--hairline)] bg-[var(--input-bg)] px-2.5 py-2 text-[12px] text-[var(--fg)] outline-none placeholder:text-[var(--placeholder)] focus:border-[var(--accent-border)]"
+                      className="min-w-0 flex-1 rounded-[8px] border border-[rgba(150,185,255,.12)] bg-[rgba(10,8,22,.4)] px-2.5 py-2 text-[12px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--accent-border)]"
                     />
-                    <button className="rounded-[8px] border px-2.5 py-2 text-[11px] text-[var(--muted)]" style={{ borderColor: "var(--hairline)" }}>
+                    <button className="rounded-[8px] border px-2.5 py-2 text-[11px] text-[var(--muted)]" style={{ borderColor: "rgba(150,185,255,.14)" }}>
                       +
                     </button>
                   </form>

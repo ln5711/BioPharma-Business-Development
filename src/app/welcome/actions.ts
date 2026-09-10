@@ -2,11 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { THEME_COOKIE, THEME_COOKIE_MAX_AGE, isThemeChoice } from "@/lib/theme";
 import {
   capabilityProfiles,
   organizationMembers,
@@ -334,20 +332,6 @@ export async function signIn(
 
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
   await createSession({ userId: user.id, tenantId: member.tenantId });
-
-  // Carry the user's saved theme onto this device.
-  const [prefs] = await db
-    .select({ theme: userPreferences.theme })
-    .from(userPreferences)
-    .where(eq(userPreferences.userId, user.id))
-    .limit(1);
-  if (prefs?.theme && isThemeChoice(prefs.theme)) {
-    (await cookies()).set(THEME_COOKIE, prefs.theme, {
-      sameSite: "lax",
-      path: "/",
-      maxAge: THEME_COOKIE_MAX_AGE,
-    });
-  }
 
   revalidatePath("/", "layout");
   redirect("/");

@@ -5,8 +5,7 @@ import { getUserPrefs, RANGE_MS, type HomeRange } from "@/lib/user-prefs";
 import { getRecommendations } from "@/lib/recommendations/engine";
 import { AskBar } from "@/components/ask/ask-bar";
 import { RangeFilter } from "./range-filter";
-import { recFeedback } from "./home-actions";
-import { AddPriorityForm } from "./add-priority-form";
+import { addQuickPriority, recFeedback } from "./home-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -34,28 +33,13 @@ export default async function HomePage({
   const heading = authenticated && user?.lastLoginAt ? "Welcome back" : greet;
 
   const rangeLabel = range === "24h" ? "24 hours" : range === "7d" ? "7 days" : "30 days";
-  // Carry the same timeframe the metric was computed over into the linked view.
-  const sinceDays = range === "24h" ? 1 : range === "7d" ? 7 : 30;
 
   const metrics = [
     { value: counts.trialsTracked, label: "Trials tracked", href: "/trials" },
-    {
-      value: counts.trialChanges,
-      label: `Changes detected · ${rangeLabel}`,
-      href: `/intelligence?since=${sinceDays}&type=TRIAL_STATUS_CHANGE`,
-    },
-    {
-      value: counts.highPriority,
-      label: `High-priority signals · ${rangeLabel}`,
-      href: `/intelligence?min=70&since=${sinceDays}`,
-      accent: true,
-    },
+    { value: counts.trialChanges, label: `Changes detected · ${rangeLabel}`, href: "/trials" },
+    { value: counts.highPriority, label: `High-priority signals · ${rangeLabel}`, href: "/intelligence?min=70", accent: true },
     { value: counts.accountsActive, label: `Accounts with activity · ${rangeLabel}`, href: "/accounts" },
-    {
-      value: counts.meaningfulSignals,
-      label: `Signals · ${rangeLabel}`,
-      href: `/intelligence?since=${sinceDays}`,
-    },
+    { value: counts.meaningfulSignals, label: `Signals · ${rangeLabel}`, href: "/intelligence" },
     { value: counts.openTasks, label: "Follow-ups & tasks due", href: "/outreach" },
   ];
 
@@ -104,10 +88,10 @@ export default async function HomePage({
         ))}
       </div>
 
-      <div className="mt-9 flex items-end justify-between gap-4 border-b pb-3" style={{ borderColor: "var(--hairline)" }}>
+      <div className="mt-9 flex items-end justify-between gap-4 border-b pb-3" style={{ borderColor: "rgba(150,185,255,.12)" }}>
         <h2
           className="text-[11px] uppercase"
-          style={{ letterSpacing: ".24em", color: "var(--muted)", fontFamily: "var(--font-mono)", fontWeight: 600 }}
+          style={{ letterSpacing: ".24em", color: "#B7BFD8", fontFamily: "var(--font-mono)", fontWeight: 600 }}
         >
           Today&rsquo;s priorities
         </h2>
@@ -125,11 +109,11 @@ export default async function HomePage({
             <article
               key={r.key}
               className="fade-in grid grid-cols-[34px_1fr] gap-4 border-b py-5"
-              style={{ borderColor: "var(--hairline)" }}
+              style={{ borderColor: "rgba(150,185,255,.09)" }}
             >
               <div
                 className="tnum pt-0.5 text-right text-[13px]"
-                style={{ fontFamily: "var(--font-serif)", color: "var(--faint)" }}
+                style={{ fontFamily: "var(--font-serif)", color: "#97A5BC" }}
               >
                 {String(i + 1).padStart(2, "0")}
               </div>
@@ -138,28 +122,28 @@ export default async function HomePage({
                   {r.entityLabel ? (
                     <span
                       className="text-[10.5px] font-semibold uppercase"
-                      style={{ letterSpacing: ".16em", color: "var(--muted)" }}
+                      style={{ letterSpacing: ".16em", color: "#B7BFD8" }}
                     >
                       {r.entityLabel}
                     </span>
                   ) : null}
                   <span
                     className="rounded-[4px] px-2 py-[2px] text-[10.5px]"
-                    style={{ color: "var(--accent)", background: "var(--accent-tint)" }}
+                    style={{ color: "#8FD3FF", background: "rgba(143,211,255,.1)" }}
                   >
                     {r.type.replace("_", " ")}
                   </span>
                 </div>
                 <h3
                   className="mt-1.5 text-[17px] leading-[1.32]"
-                  style={{ fontFamily: "var(--font-serif)", color: "var(--fg)" }}
+                  style={{ fontFamily: "var(--font-serif)", color: "#EDF1FC" }}
                 >
                   {r.title}
                 </h3>
                 <p className="mt-2 max-w-[64ch] text-[13.5px] leading-[1.58] text-[var(--body)]">
                   <span
                     className="mr-2 text-[10px] uppercase"
-                    style={{ letterSpacing: ".16em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}
+                    style={{ letterSpacing: ".16em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}
                   >
                     Why this matters
                   </span>
@@ -198,7 +182,7 @@ export default async function HomePage({
                   <form action={recFeedback}>
                     <input type="hidden" name="key" value={r.key} />
                     <input type="hidden" name="status" value="deferred" />
-                    <button className="rounded-[9px] border px-3 py-2 text-[12px] text-[var(--muted)] hover:text-[var(--fg)]" style={{ borderColor: "var(--hairline)" }}>
+                    <button className="rounded-[9px] border px-3 py-2 text-[12px] text-[var(--muted)] hover:text-[var(--fg)]" style={{ borderColor: "rgba(150,185,255,.14)" }}>
                       Defer
                     </button>
                   </form>
@@ -216,7 +200,22 @@ export default async function HomePage({
         </div>
       )}
 
-      <AddPriorityForm />
+      <form action={addQuickPriority} className="mt-6 flex gap-2">
+        <input
+          name="text"
+          required
+          maxLength={200}
+          placeholder="+ Add a priority — e.g. Prepare Novartis presentation today"
+          className="flex-1 rounded-[11px] border border-[rgba(150,185,255,.16)] bg-[rgba(10,8,22,.5)] px-3.5 py-3 text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--accent-border)]"
+        />
+        <button
+          type="submit"
+          className="rounded-[11px] border px-4 py-3 text-[12.5px] text-[#CDE9FF]"
+          style={{ borderColor: "rgba(143,211,255,.3)", background: "rgba(143,211,255,.1)" }}
+        >
+          Add
+        </button>
+      </form>
     </div>
   );
 }

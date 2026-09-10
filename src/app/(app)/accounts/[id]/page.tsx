@@ -159,7 +159,7 @@ export default async function AccountPage({
               <div
                 key={i}
                 className="grid grid-cols-[70px_1fr] gap-4 border-b py-3"
-                style={{ borderColor: "var(--hairline)" }}
+                style={{ borderColor: "rgba(150,185,255,.09)" }}
               >
                 <span
                   className="pt-0.5 text-[11px] text-[var(--faint)]"

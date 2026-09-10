@@ -31,12 +31,12 @@ export function AddTaskForm({ defaultCategory = "outreach" as TaskCategory }) {
         placeholder="Add a task…"
         maxLength={500}
         autoComplete="off"
-        className="min-w-[220px] flex-1 rounded-[9px] border border-[var(--hairline)] bg-[var(--input-bg)] px-3 py-2.5 text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--dim)] focus:border-[var(--accent-border)]"
+        className="min-w-[220px] flex-1 rounded-[9px] border border-[rgba(150,185,255,.14)] bg-[rgba(10,8,22,.5)] px-3 py-2.5 text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--dim)] focus:border-[var(--accent-border)]"
       />
       <select
         name="category"
         defaultValue={defaultCategory}
-        className="rounded-[9px] border border-[var(--hairline)] bg-[var(--input-bg)] px-2.5 py-2.5 text-[12.5px] text-[var(--fg)] outline-none focus:border-[var(--accent-border)]"
+        className="rounded-[9px] border border-[rgba(150,185,255,.14)] bg-[rgba(10,8,22,.5)] px-2.5 py-2.5 text-[12.5px] text-[var(--fg)] outline-none focus:border-[var(--accent-border)]"
       >
         {TASK_CATEGORIES.map((c) => (
           <option key={c} value={c}>

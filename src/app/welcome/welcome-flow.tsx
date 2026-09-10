@@ -1,35 +1,59 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { ArrowRight, Plus, X } from "lucide-react";
 import { PulsarMark } from "@/components/brand/pulsar-mark";
-import { PulsarIntro } from "@/components/brand/pulsar-intro";
 import { RECOMMENDED_PRIORITIES } from "@/lib/priorities";
 import { createAccount, signIn, type AuthResult } from "./actions";
 
-type Phase = "intro" | "form";
+type Phase = "intro" | "leaving" | "form";
 type Mode = "create" | "signin";
 
-export function WelcomeFlow({ replayIntro = false }: { replayIntro?: boolean }) {
+export function WelcomeFlow() {
   const [phase, setPhase] = useState<Phase>("intro");
-  // Sign in is the default entry point; new users switch to Create explicitly.
-  // Switching mode never touches `phase`, so the intro does not replay.
+  // Signed-out visitors land on Sign in; new users switch to Create.
   const [mode, setMode] = useState<Mode>("signin");
 
-  // The animated entrance is purely presentational. It hands control to the form
-  // via onDone (timer, Skip button, reduced-motion, or a hard failsafe) and can
-  // never block reaching signup / sign-in.
-  if (phase === "intro") {
+  useEffect(() => {
+    if (phase !== "intro") return;
+    const t = setTimeout(() => setPhase("leaving"), 2100);
+    return () => clearTimeout(t);
+  }, [phase]);
+  useEffect(() => {
+    if (phase !== "leaving") return;
+    const t = setTimeout(() => setPhase("form"), 640);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  if (phase !== "form") {
     return (
-      <div className="dark-scope">
-        <div className="pulsar-shell min-h-dvh" aria-hidden />
-        <PulsarIntro forceReplay={replayIntro} onDone={() => setPhase("form")} />
+      <div className="pulsar-shell grid min-h-dvh place-items-center px-6" style={{ color: "#F1F6FF" }}>
+        <div
+          className={phase === "leaving" ? "fade-slide-up" : "fade-slide-in"}
+          style={{ textAlign: "center" }}
+        >
+          <div className="flex justify-center">
+            <PulsarMark size={128} />
+          </div>
+          <div
+            className="mt-6"
+            style={{ fontFamily: "var(--font-serif)", fontWeight: 300, fontSize: "clamp(30px,4vw,44px)", letterSpacing: ".04em" }}
+          >
+            newwin
+          </div>
+          <div
+            className="mt-3 text-[11px] uppercase"
+            style={{ letterSpacing: ".3em", color: "#9AA3C0", fontFamily: "var(--font-mono)" }}
+          >
+            Signal intelligence for oncology BD
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="dark-scope pulsar-shell relative min-h-dvh overflow-y-auto">
+    <div className="pulsar-shell relative min-h-dvh overflow-y-auto">
       <div className="absolute left-7 top-7 flex items-center gap-2.5">
         <PulsarMark size={28} />
         <span className="text-[19px] text-[#EDF2FF]" style={{ fontFamily: "var(--font-serif)", letterSpacing: ".03em" }}>
@@ -102,9 +126,6 @@ function CreateForm({ onSignIn }: { onSignIn: () => void }) {
       {customs.map((c) => (
         <input key={c} type="hidden" name="customPriorities" value={c} />
       ))}
-      {/* A priority typed but not yet added with "+" is still submitted. */}
-      <input type="hidden" name="customDraft" value={draft} />
-
 
       <div className="flex items-center justify-between gap-3">
         <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".26em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}>
@@ -220,57 +241,33 @@ function CreateForm({ onSignIn }: { onSignIn: () => void }) {
 function SignInForm({ onCreate }: { onCreate: () => void }) {
   const [state, action, pending] = useActionState<AuthResult | null, FormData>(signIn, null);
   return (
-    <div className="fade-slide-in">
-      <form action={action} className="panel-glass p-7">
-        <div
-          className="text-[10.5px] uppercase"
-          style={{ letterSpacing: ".26em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}
-        >
-          Sign in to newwin
+    <form action={action} className="panel-glass fade-slide-in p-7">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10.5px] uppercase" style={{ letterSpacing: ".26em", color: "#8FD3FF", fontFamily: "var(--font-mono)" }}>
+          Sign in
         </div>
-        <div className="mt-5 flex flex-col gap-4">
-          <Field label="Work email">
-            <input name="email" required type="email" placeholder="you@company.com" className={inputCls} />
-          </Field>
-          <Field label="Password">
-            <input
-              name="password"
-              required
-              type="password"
-              placeholder="Your password"
-              className={inputCls}
-            />
-          </Field>
-        </div>
-        {state && !state.ok ? (
-          <p className="mt-4 text-[12.5px] text-[#F0866A]">{state.error}</p>
-        ) : null}
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[11px] px-4 py-3.5 text-[14px] font-semibold disabled:opacity-60"
-          style={{
-            background: "var(--accent-btn)",
-            color: "var(--accent-btn-ink)",
-            boxShadow: "var(--accent-btn-shadow)",
-          }}
-        >
-          {pending ? "Signing in…" : "Sign in"} <ArrowRight size={15} />
-        </button>
-      </form>
-
-      <div className="mt-4 rounded-[14px] border p-4 text-center" style={{ borderColor: "rgba(150,185,255,.16)" }}>
-        <p className="text-[13px] text-[#C7CEE4]">New to newwin?</p>
-        <button
-          type="button"
-          onClick={onCreate}
-          className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-[11px] border px-4 py-3 text-[13.5px] font-semibold"
-          style={{ borderColor: "rgba(143,211,255,.4)", background: "rgba(143,211,255,.08)", color: "#DDF1FF" }}
-        >
-          Create an account <ArrowRight size={14} />
+        <button type="button" onClick={onCreate} className="text-[12px] text-[#9AA3C0] hover:text-white">
+          Create an account
         </button>
       </div>
-    </div>
+      <div className="mt-5 flex flex-col gap-4">
+        <Field label="Work email">
+          <input name="email" required type="email" placeholder="you@company.com" className={inputCls} />
+        </Field>
+        <Field label="Password">
+          <input name="password" required type="password" placeholder="Your password" className={inputCls} />
+        </Field>
+      </div>
+      {state && !state.ok ? <p className="mt-4 text-[12.5px] text-[#F0866A]">{state.error}</p> : null}
+      <button
+        type="submit"
+        disabled={pending}
+        className="mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-[11px] px-4 py-3.5 text-[14px] font-semibold disabled:opacity-60"
+        style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)", boxShadow: "var(--accent-btn-shadow)" }}
+      >
+        {pending ? "Signing in…" : "Sign in"} <ArrowRight size={15} />
+      </button>
+    </form>
   );
 }
 

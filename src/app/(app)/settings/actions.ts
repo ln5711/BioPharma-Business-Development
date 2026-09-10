@@ -1,127 +1,95 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { tenants, users } from "@/db/schema";
+import { tenants, userPreferences, users, type Priority } from "@/db/schema";
 import { getActiveTenant } from "@/lib/tenant";
-import {
-  addPriority as addPriorityStore,
-  editPriority as editPriorityStore,
-  movePriority as movePriorityStore,
-  removePriority as removePriorityStore,
-  setPriorityPaused,
-} from "@/lib/priorities-store";
-import { createSession, revokeSessions, hashPassword, verifyPassword } from "@/lib/auth";
-import { getSession } from "@/lib/auth";
 
-function revalidatePriorities() {
+async function loadPrefs(userId: string) {
+  const db = await getDb();
+  const [row] = await db
+    .select()
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, userId))
+    .limit(1);
+  return { db, row };
+}
+
+async function savePriorities(userId: string, tenantId: string, priorities: Priority[]) {
+  const db = await getDb();
+  const ordered = priorities.map((p, i) => ({ ...p, order: i }));
+  await db
+    .insert(userPreferences)
+    .values({ userId, tenantId, priorities: ordered, onboardedAt: new Date() })
+    .onConflictDoUpdate({
+      target: userPreferences.userId,
+      set: { priorities: ordered, updatedAt: new Date() },
+    });
   revalidatePath("/");
   revalidatePath("/settings");
 }
 
 export async function addPriority(formData: FormData) {
-  const text = String(formData.get("text") ?? "");
-  const recommendedId = String(formData.get("recommendedId") ?? "") || undefined;
+  const text = String(formData.get("text") ?? "").trim();
+  if (!text) return;
   const { tenant, user } = await getActiveTenant();
-  await addPriorityStore(user.id, tenant.id, { text, recommendedId });
-  revalidatePriorities();
-}
-
-export async function editPriority(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  const text = String(formData.get("text") ?? "");
-  const { tenant, user } = await getActiveTenant();
-  await editPriorityStore(user.id, tenant.id, id, text);
-  revalidatePriorities();
+  const { row } = await loadPrefs(user.id);
+  const list: Priority[] = row?.priorities ?? [];
+  list.push({ id: randomUUID(), text, paused: false, order: list.length });
+  await savePriorities(user.id, tenant.id, list);
 }
 
 export async function removePriority(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const { tenant, user } = await getActiveTenant();
-  await removePriorityStore(user.id, tenant.id, id);
-  revalidatePriorities();
+  const { row } = await loadPrefs(user.id);
+  await savePriorities(user.id, tenant.id, (row?.priorities ?? []).filter((p) => p.id !== id));
 }
 
 export async function movePriority(formData: FormData) {
   const id = String(formData.get("id") ?? "");
-  const dir = String(formData.get("dir") ?? "") === "up" ? "up" : "down";
+  const dir = String(formData.get("dir") ?? "");
   const { tenant, user } = await getActiveTenant();
-  await movePriorityStore(user.id, tenant.id, id, dir);
-  revalidatePriorities();
+  const { row } = await loadPrefs(user.id);
+  const list = [...(row?.priorities ?? [])].sort((a, b) => a.order - b.order);
+  const i = list.findIndex((p) => p.id === id);
+  const j = dir === "up" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  await savePriorities(user.id, tenant.id, list);
 }
 
 export async function togglePriorityPause(formData: FormData) {
   const id = String(formData.get("id") ?? "");
-  const paused = String(formData.get("paused") ?? "") === "1";
   const { tenant, user } = await getActiveTenant();
-  // `paused` is the CURRENT state; flip it.
-  await setPriorityPaused(user.id, tenant.id, id, !paused);
-  revalidatePriorities();
+  const { row } = await loadPrefs(user.id);
+  await savePriorities(
+    user.id,
+    tenant.id,
+    (row?.priorities ?? []).map((p) => (p.id === id ? { ...p, paused: !p.paused } : p)),
+  );
 }
 
 export async function updateProfile(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim().slice(0, 120);
-  const position = String(formData.get("position") ?? "").trim().slice(0, 120);
+  const name = String(formData.get("name") ?? "").trim();
+  const position = String(formData.get("position") ?? "").trim();
   const { user } = await getActiveTenant();
   const db = await getDb();
-  if (name) {
-    await db
-      .update(users)
-      .set({ name, position: position || null })
-      .where(eq(users.id, user.id));
-  }
+  if (name) await db.update(users).set({ name, position: position || null }).where(eq(users.id, user.id));
   revalidatePath("/", "layout");
 }
 
 export async function updateOrganization(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim().slice(0, 160);
-  const domain = String(formData.get("domain") ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/[/?#].*$/, "");
+  const name = String(formData.get("name") ?? "").trim();
+  const domain = String(formData.get("domain") ?? "").trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   const { tenant } = await getActiveTenant();
   const db = await getDb();
-  if (name) {
+  if (name)
     await db
       .update(tenants)
       .set({ name, domain: domain || null, website: domain ? `https://${domain}` : null })
       .where(eq(tenants.id, tenant.id));
-  }
   revalidatePath("/", "layout");
-}
-
-export type PasswordResult = { ok: true } | { ok: false; error: string };
-
-/** Change password — verifies the current one, then revokes all other sessions. */
-export async function changePassword(
-  _prev: PasswordResult | null,
-  formData: FormData,
-): Promise<PasswordResult> {
-  const current = String(formData.get("current") ?? "");
-  const next = String(formData.get("next") ?? "");
-  if (next.length < 8) return { ok: false, error: "New password must be at least 8 characters." };
-
-  const { user } = await getActiveTenant();
-  const db = await getDb();
-  const [row] = await db
-    .select({ passwordHash: users.passwordHash })
-    .from(users)
-    .where(eq(users.id, user.id))
-    .limit(1);
-  if (!row || !verifyPassword(current, row.passwordHash)) {
-    return { ok: false, error: "Current password is incorrect." };
-  }
-
-  await db.update(users).set({ passwordHash: hashPassword(next) }).where(eq(users.id, user.id));
-  await revokeSessions(user.id); // kill every existing session…
-  const session = await getSession();
-  if (session) {
-    // …then re-issue one for THIS device so the user isn't bounced out.
-    await createSession({ userId: session.userId, tenantId: session.tenantId });
-  }
-  revalidatePath("/", "layout");
-  return { ok: true };
 }

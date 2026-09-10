@@ -1,31 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { signOutAction, signOutEverywhereAction, persistThemeAction } from "@/app/(app)/actions";
-import { AskBar } from "@/components/ask/ask-bar";
+import { useEffect, useState } from "react";
+import { Moon, Search, Sun } from "lucide-react";
 import { PulsarMark } from "@/components/brand/pulsar-mark";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { formatRelativeDays } from "@/lib/utils";
-
-type IngestState = "not_configured" | "never" | "syncing" | "ok" | "failed";
-export interface TopbarIngest {
-  state: IngestState;
-  atISO: string | null;
-  detail: string | null;
-}
+import { signOutAction } from "@/app/(app)/actions";
+import { AskBar } from "@/components/ask/ask-bar";
 
 /**
  * Glass header. Phone shows the pulsar mark + wordmark; every size gets the
- * compact Ask newwin bar, the real ingestion-status pill, a theme toggle and an
- * account menu.
+ * compact Ask newwin bar, a live-ingest pill, theme toggle and an account menu.
  */
 export function Topbar({
   userName,
-  ingest,
+  authenticated,
 }: {
   userName: string;
-  ingest: TopbarIngest;
+  authenticated: boolean;
 }) {
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("obd-theme");
+      if (s === "light" || s === "dark") {
+        setTheme(s);
+        document.documentElement.dataset.theme = s === "light" ? "light" : "";
+      }
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
+  const toggle = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.theme = next === "light" ? "light" : "";
+    try {
+      localStorage.setItem("obd-theme", next);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const initials =
     userName
       .split(" ")
@@ -46,7 +63,7 @@ export function Topbar({
       <div className="flex items-center gap-2.5 md:hidden">
         <PulsarMark size={24} />
         <span
-          className="text-[17px] text-primary"
+          className="text-[17px] text-[#EDF2FF]"
           style={{ fontFamily: "var(--font-serif)", letterSpacing: ".03em" }}
         >
           newwin
@@ -58,14 +75,36 @@ export function Topbar({
       </div>
 
       <div className="flex items-center gap-2">
-        <IngestPill ingest={ingest} />
+        <div
+          className="hidden items-center gap-2 rounded-full border px-3 py-[7px] lg:flex"
+          style={{ background: "rgba(143,211,255,.07)", borderColor: "rgba(143,211,255,.2)" }}
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: "#8FD3FF", boxShadow: "0 0 8px #8FD3FF" }}
+          />
+          <span
+            className="whitespace-nowrap text-[11.5px] tracking-[0.08em] text-[#C6DEF6]"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            Live · ClinicalTrials.gov
+          </span>
+        </div>
 
-        <ThemeToggle onPersist={(t) => persistThemeAction(t)} />
+        <button
+          type="button"
+          aria-label="Toggle theme"
+          onClick={toggle}
+          className="grid h-10 w-10 place-items-center rounded-[11px] border text-[var(--muted)] transition-colors hover:text-white"
+          style={{ background: "rgba(150,185,255,.06)", borderColor: "rgba(150,185,255,.14)" }}
+        >
+          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+        </button>
 
         <details className="group relative">
           <summary
             className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full text-[12px] font-bold [&::-webkit-details-marker]:hidden"
-            style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }}
+            style={{ background: "linear-gradient(140deg,#7FC4F8,#5A7FE8)", color: "#06101F" }}
           >
             {initials}
           </summary>
@@ -75,72 +114,36 @@ export function Topbar({
               (e.currentTarget.closest("details") as HTMLDetailsElement)?.removeAttribute("open")
             }
           />
-          <div className="panel-glass absolute right-0 z-20 mt-2 w-[230px] overflow-hidden p-1.5">
-            <div className="px-3 py-2 text-[12px] text-secondary">{userName}</div>
+          <div
+            className="panel-glass absolute right-0 z-20 mt-2 w-[220px] overflow-hidden p-1.5"
+          >
+            <div className="px-3 py-2 text-[12px] text-[var(--muted)]">{userName}</div>
             <Link
               href="/settings"
-              className="block rounded-[9px] px-3 py-2 text-[13px] text-primary hover:bg-[color:var(--selected-bg)]"
+              className="block rounded-[9px] px-3 py-2 text-[13px] text-[var(--fg)] hover:bg-[rgba(150,185,255,.08)]"
             >
               Priorities &amp; profile
             </Link>
-            <form action={signOutAction}>
-              <button
-                type="submit"
-                className="w-full rounded-[9px] px-3 py-2 text-left text-[13px] text-primary hover:bg-[color:var(--selected-bg)]"
+            {authenticated ? (
+              <form action={signOutAction}>
+                <button
+                  type="submit"
+                  className="w-full rounded-[9px] px-3 py-2 text-left text-[13px] text-[var(--fg)] hover:bg-[rgba(150,185,255,.08)]"
+                >
+                  Sign out
+                </button>
+              </form>
+            ) : (
+              <Link
+                href="/welcome"
+                className="block rounded-[9px] px-3 py-2 text-[13px] text-[var(--accent)] hover:bg-[rgba(150,185,255,.08)]"
               >
-                Sign out
-              </button>
-            </form>
-            <form action={signOutEverywhereAction}>
-              <button
-                type="submit"
-                className="w-full rounded-[9px] px-3 py-2 text-left text-[13px] text-secondary hover:bg-[color:var(--selected-bg)]"
-              >
-                Sign out on all devices
-              </button>
-            </form>
+                Sign in / Create account
+              </Link>
+            )}
           </div>
         </details>
       </div>
     </header>
-  );
-}
-
-function IngestPill({ ingest }: { ingest: TopbarIngest }) {
-  const map: Record<IngestState, { dot: string; label: string }> = {
-    not_configured: { dot: "var(--faint)", label: "ClinicalTrials.gov · not configured" },
-    never: { dot: "var(--warn)", label: "ClinicalTrials.gov · never synced" },
-    syncing: { dot: "var(--accent)", label: "ClinicalTrials.gov · syncing…" },
-    ok: { dot: "var(--success)", label: "" },
-    failed: { dot: "var(--danger)", label: "ClinicalTrials.gov · last sync failed" },
-  };
-  const m = map[ingest.state];
-  const label =
-    ingest.state === "ok"
-      ? `ClinicalTrials.gov · updated ${
-          ingest.atISO ? formatRelativeDays(new Date(ingest.atISO)) : "recently"
-        }`
-      : m.label;
-
-  return (
-    <div
-      className="hidden items-center gap-2 rounded-full border px-3 py-[7px] lg:flex"
-      style={{ background: "var(--panel-2)", borderColor: "var(--hairline)" }}
-      title={ingest.detail ?? undefined}
-    >
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{
-          background: m.dot,
-          boxShadow: ingest.state === "syncing" ? "0 0 8px var(--accent)" : "none",
-        }}
-      />
-      <span
-        className="whitespace-nowrap text-[11.5px] tracking-[0.06em] text-secondary"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {label}
-      </span>
-    </div>
   );
 }

@@ -6,8 +6,10 @@
  *     TSX_TSCONFIG_PATH=tests/tsconfig.json \
  *     node --import tsx --test tests/preview-live.test.ts
  *
+ * Skipped in the normal `npm test` run (guarded on the preview-branch host).
  * Writes two `preview-verify-*` tenants (safe on the isolated schema-only
- * branch). Prints a cleanup line. NOT part of `npm test`.
+ * branch). Closes the pool in `after()` so the process exits with the runner's
+ * real exit code — no `process.exit()`.
  */
 import "dotenv/config"; // honours DOTENV_CONFIG_PATH=.env.preview.local
 import assert from "node:assert/strict";
@@ -16,17 +18,15 @@ import { randomUUID } from "node:crypto";
 
 process.env.AUTH_SECRET ||= "preview-live-local-signing-secret-32-chars!!";
 
-const DB_URL = process.env.STORAGE_DATABASE_URL_UNPOOLED || process.env.STORAGE_DATABASE_URL || "";
-if (!/ep-wandering-frost-arbrtugw/.test(DB_URL)) {
-  throw new Error(
-    "Refusing to run: STORAGE_DATABASE_URL is not the Neon preview branch " +
-      "(ep-wandering-frost-arbrtugw). Run with DOTENV_CONFIG_PATH=.env.preview.local.",
-  );
-}
+const DB_URL =
+  process.env.STORAGE_DATABASE_URL_UNPOOLED || process.env.STORAGE_DATABASE_URL || "";
+const SKIP = !/ep-wandering-frost-arbrtugw/.test(DB_URL);
+const opts = { skip: SKIP && "not the Neon preview branch — run with DOTENV_CONFIG_PATH=.env.preview.local" };
 
 let db: any;
 let schema: any;
 let auth: typeof import("@/lib/auth");
+let closeDb: () => Promise<void>;
 let eq: typeof import("drizzle-orm").eq;
 let and: typeof import("drizzle-orm").and;
 
@@ -37,19 +37,19 @@ let a: { tenantId: string; userId: string };
 let b: { tenantId: string; userId: string };
 
 before(async () => {
-  db = await (await import("@/db")).getDb();
+  if (SKIP) return;
+  const dbmod = await import("@/db");
+  db = await dbmod.getDb();
+  closeDb = dbmod.closeDb;
   schema = await import("@/db/schema");
   auth = await import("@/lib/auth");
   ({ eq, and } = await import("drizzle-orm"));
 
-  const host = (() => {
-    try {
-      return new URL(process.env.STORAGE_DATABASE_URL_UNPOOLED || process.env.STORAGE_DATABASE_URL || "").host;
-    } catch {
-      return "?";
-    }
-  })();
-  console.log(`\n  DB host: ${host}\n`);
+  try {
+    console.log(`\n  DB host: ${new URL(DB_URL).host}\n`);
+  } catch {
+    /* ignore */
+  }
 
   const signup = (u: typeof A, prio: string) =>
     db.transaction(async (tx: any) => {
@@ -81,21 +81,20 @@ before(async () => {
   b = await signup(B, "MET exon 14 skipping partners");
 });
 
-after(() => {
+after(async () => {
+  if (SKIP) return;
   console.log(`\n  cleanup: delete from tenants where slug like 'preview-verify-%';\n`);
-  // The postgres pool keeps the event loop alive; this is a one-off manual
-  // verification, so exit deliberately once assertions are done.
-  setTimeout(() => process.exit(0), 300).unref();
+  await closeDb(); // let the process exit on its own with the runner's exit code
 });
 
-test("signup persists two distinct accounts", async () => {
+test("signup persists two distinct accounts", opts, async () => {
   assert.notEqual(a.userId, b.userId);
   assert.notEqual(a.tenantId, b.tenantId);
   const users = await db.select().from(schema.users).where(eq(schema.users.email, A.email.toLowerCase()));
   assert.equal(users.length, 1);
 });
 
-test("priorities persist per user with no cross-bleed", async () => {
+test("priorities persist per user with no cross-bleed", opts, async () => {
   const [ap] = await db.select().from(schema.userPreferences).where(eq(schema.userPreferences.userId, a.userId));
   const [bp] = await db.select().from(schema.userPreferences).where(eq(schema.userPreferences.userId, b.userId));
   assert.ok(ap.priorities.some((p: any) => /KRAS/.test(p.text)));
@@ -104,7 +103,7 @@ test("priorities persist per user with no cross-bleed", async () => {
   assert.ok(!bp.priorities.some((p: any) => /KRAS/.test(p.text)));
 });
 
-test("login: wrong password rejected, right password accepted, resolves to own tenant", async () => {
+test("login: wrong password rejected, right accepted, resolves to own tenant", opts, async () => {
   const [u] = await db.select().from(schema.users).where(eq(schema.users.email, A.email.toLowerCase()));
   assert.equal(auth.verifyPassword("wrong", u.passwordHash), false);
   assert.equal(auth.verifyPassword(A.pw, u.passwordHash), true);
@@ -115,21 +114,20 @@ test("login: wrong password rejected, right password accepted, resolves to own t
   assert.equal(m.tenantId, a.tenantId);
 });
 
-test("isolation: A's tenant-scoped query never returns B's rows", async () => {
+test("isolation: A's tenant-scoped query never returns B's rows", opts, async () => {
   const rows = await db
     .select()
     .from(schema.userPreferences)
     .where(and(eq(schema.userPreferences.tenantId, a.tenantId), eq(schema.userPreferences.userId, a.userId)));
   assert.ok(!rows.some((r: any) => r.userId === b.userId));
-
-  const bScopedByA = await db
+  const bByA = await db
     .select()
     .from(schema.userPreferences)
     .where(eq(schema.userPreferences.tenantId, a.tenantId));
-  assert.ok(!bScopedByA.some((r: any) => r.userId === b.userId));
+  assert.ok(!bByA.some((r: any) => r.userId === b.userId));
 });
 
-test("duplicate email rejected by unique constraint (23505)", async () => {
+test("duplicate email rejected by unique constraint (23505)", opts, async () => {
   let code = "";
   try {
     await db.insert(schema.users).values({
