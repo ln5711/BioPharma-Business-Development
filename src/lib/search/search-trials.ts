@@ -265,11 +265,14 @@ function scoreTrial(p: ParsedQuery, r: TrialSearchResult): number {
   const upd = r.lastUpdate ? Date.parse(r.lastUpdate) : 0;
   if (upd) {
     const ageDays = (Date.now() - upd) / 86_400_000;
-    if (ageDays < 7) s += 12;
-    else if (ageDays < 30) s += 8;
-    else if (ageDays < 120) s += 4;
+    if (ageDays < 7) s += 14;
+    else if (ageDays < 30) s += 10;
+    else if (ageDays < 120) s += 5;
     else if (ageDays < 365) s += 1;
+    else if (ageDays > 1460) s -= 14;
+    else if (ageDays > 730) s -= 7;
   }
+  if (r.status === "completed" || r.status === "terminated") s -= 6;
   if (r.inWorkspace) s += 4;
   return s;
 }
@@ -393,26 +396,32 @@ export async function searchTrialsHybrid(
   }
 
   // Relevance gate: when the query names concrete entities, a result must
-  // actually mention one of them (or be an exact NCT / workspace row). This is
-  // what keeps ClinicalTrials.gov's loose free-text matches (a trial that merely
-  // *excludes* KRAS, say) out of the answer.
-  const wants = [
+  // actually be about them — this keeps ClinicalTrials.gov's loose free-text
+  // matches (a trial that merely *excludes* KRAS, say) and off-target workspace
+  // rows out of the answer. When BOTH a company and a science entity are named,
+  // require BOTH ("Amgen KRAS" → an Amgen-sponsored KRAS trial, not any KRAS
+  // trial). Exact NCT ids always pass.
+  const sciWants = [
     ...p.biomarkers.map((b) => b.toLowerCase()),
     ...p.assets.map((a) => a.toLowerCase()),
     ...p.indications,
-    ...p.companies.map((c) => c.toLowerCase()),
   ];
+  const coWants = p.companies.map((c) => c.toLowerCase());
   const nctSet = new Set(p.nctIds);
+  const hit = (needle: string, hay: string) => {
+    if (needle.includes(" ")) return hay.includes(needle) || hay.includes(needle.split(" ")[0]);
+    return new RegExp(`(?<![a-z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(hay);
+  };
   const gated = [...merged.values()].filter((r) => {
-    if (!wants.length) return true;
-    if (nctSet.has(r.nctId) || r.inWorkspace) return true;
-    const hay =
+    if (!sciWants.length && !coWants.length) return true;
+    if (nctSet.has(r.nctId)) return true;
+    const fullHay =
       `${r.title} ${r.sponsor ?? ""} ${r.interventions.join(" ")} ${r.conditions.join(" ")} ` +
       `${r.biomarkers.join(" ")} ${r.summary ?? ""}`.toLowerCase();
-    return wants.some((w) => {
-      if (w.includes(" ")) return hay.includes(w) || hay.includes(w.split(" ")[0]);
-      return new RegExp(`(?<![a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(hay);
-    });
+    const coHay = `${r.title} ${r.sponsor ?? ""}`.toLowerCase();
+    const sciOk = !sciWants.length || sciWants.some((w) => hit(w, fullHay));
+    const coOk = !coWants.length || coWants.some((w) => hit(w, coHay));
+    return sciOk && coOk;
   });
 
   const results = (gated.length ? gated : [...merged.values()])
