@@ -61,8 +61,21 @@ async function main() {
       return "unknown-host";
     }
   })();
+
+  // Safety rail: when MIGRATE_EXPECT_HOST is set, refuse to run unless the
+  // resolved host matches it. Use this for production
+  //   MIGRATE_EXPECT_HOST=ep-polished-boat-aru8on3x DOTENV_CONFIG_PATH=.env.production.local npm run db:migrate
+  const expect = process.env.MIGRATE_EXPECT_HOST?.trim();
+  if (expect && !host.startsWith(expect)) {
+    throw new Error(
+      `Refusing to migrate: MIGRATE_EXPECT_HOST="${expect}" but the resolved host is "${host}". ` +
+        `Check DOTENV_CONFIG_PATH / the connection string.`,
+    );
+  }
+
   console.log(
-    `→ applying migrations to ${host} via ${direct ? "DIRECT (unpooled)" : "the resolved (possibly pooled)"} connection`,
+    `→ applying migrations to ${host} via ${direct ? "DIRECT (unpooled)" : "the resolved (possibly pooled)"} connection` +
+      (expect ? ` [host guard: ${expect} ✓]` : ""),
   );
 
   const { drizzle } = await import("drizzle-orm/postgres-js");

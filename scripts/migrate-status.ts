@@ -48,6 +48,19 @@ async function main() {
   }
 
   const url = unpooledUrl() ?? env.DATABASE_URL;
+  const statusHost = (() => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return "unknown-host";
+    }
+  })();
+  const expect = process.env.MIGRATE_EXPECT_HOST?.trim();
+  if (expect && !statusHost.startsWith(expect)) {
+    throw new Error(
+      `Host guard: MIGRATE_EXPECT_HOST="${expect}" but resolved host is "${statusHost}".`,
+    );
+  }
   const postgres = (await import("postgres")).default;
   const client = postgres(url, { max: 1 });
 
