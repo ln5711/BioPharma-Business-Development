@@ -33,8 +33,64 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const runWeb = url.searchParams.get("web") !== "0";
+  const runPipeline = url.searchParams.get("pipeline") === "1";
 
   const out: Record<string, unknown> = { ok: true, llm: status };
+
+  // 0 — full runAsk() pipeline for an explicit web-search query, against a
+  // workspace with ZERO relevant records (the exact reported scenario). Proves
+  // the web summary is the primary answer, not the no-results message.
+  if (runPipeline) {
+    try {
+      const { runAsk } = await import("@/lib/ask/pipeline");
+      const { getDb } = await import("@/db");
+      const { tenants, organizationMembers } = await import("@/db/schema");
+      const { like, eq } = await import("drizzle-orm");
+      const db = await getDb();
+      const [t] = await db
+        .select()
+        .from(tenants)
+        .where(like(tenants.slug, "preview-verify-%"))
+        .limit(1);
+      const [m] = t
+        ? await db
+            .select()
+            .from(organizationMembers)
+            .where(eq(organizationMembers.tenantId, t.id))
+            .limit(1)
+        : [undefined];
+
+      if (!t || !m) {
+        out.pipeline = { skipped: "no preview-verify workspace found" };
+      } else {
+        const r = await runAsk({
+          query: "Search the web for the latest FDA news on Novartis oncology developments",
+          ctx: { tenantId: t.id, userId: m.userId },
+          page: {},
+        });
+        out.pipeline = {
+          status: r.status,
+          mode: r.mode,
+          synthesis: r.meta.synthesis,
+          synthesisError: r.meta.synthesisError,
+          researchRequestId: r.meta.researchRequestId,
+          finalRequestId: r.meta.requestId,
+          usage: r.meta.usage,
+          answerChars: r.answer.length,
+          answerLooksLikeNoResults:
+            /no account called|is in your workspace|add it as a monitored company|ask me to search external/i.test(
+              r.answer,
+            ),
+          answerPreview: r.answer.slice(0, 500),
+          workspaceNote: r.workspaceNote,
+          externalCitationCount: r.sources.filter((s) => s.kind === "external").length,
+        };
+      }
+    } catch (e) {
+      out.ok = false;
+      out.pipeline = { error: (e as Error)?.message?.slice(0, 240) };
+    }
+  }
 
   // 1 — plain text call
   try {
