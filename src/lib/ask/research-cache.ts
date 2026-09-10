@@ -48,7 +48,8 @@ export function researchCacheKey(parts: {
     s: norm(parts.statuses),
     x: parts.wantsExternalResearch,
   });
-  return "rc_" + createHash("sha256").update(shape).digest("hex").slice(0, 40);
+  // Bump the prefix when the answer format changes so stale entries are ignored.
+  return "rc2_" + createHash("sha256").update(shape).digest("hex").slice(0, 40);
 }
 
 export async function getCachedResearch(key: string): Promise<CachedResearch | null> {

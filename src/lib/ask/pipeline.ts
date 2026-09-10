@@ -372,7 +372,8 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
             "You are Ask newwin, an oncology research analyst. Answer the user's query as a PUBLIC RESEARCH briefing. " +
             "Ground every statement ONLY in the WEB RESEARCH text and the CLINICALTRIALS.GOV RESULTS provided. " +
             "Do not use unstated training knowledge for specific facts, numbers, dates or names. " +
-            "Plain prose, 6-12 sentences, each claim attributed to a source with its date. " +
+            "Write PLAIN PROSE ONLY — no markdown whatsoever: no headings or '#', no bullet or numbered lists, " +
+            "no bold or '**', no tables. Short paragraphs, 6-12 sentences total, each claim attributed to a source with its date. " +
             "For a broad one-word topic, give a concise orientation (what it is, why it matters, the current landscape). " +
             "End with a line 'NARROW: ' followed by 3-4 comma-separated follow-up angles the user could search next.",
           prompt: [
@@ -387,7 +388,7 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
           signal: input.signal,
           timeoutMs: 45_000,
         });
-        let text = rich.text.trim();
+        let text = stripMarkdown(rich.text.trim());
         finalRequestId = rich.meta.requestId;
         finalModel = rich.meta.model;
         finalUsage = rich.meta.usage ?? webUsage;
@@ -716,4 +717,22 @@ function deterministicAnswer(intent: string, evidence: Evidence[], noResults: st
 
 function short(iso: string): string {
   return iso.slice(0, 10);
+}
+
+/**
+ * The answer panel renders plain text (whitespace-pre-wrap). The model is told
+ * not to use markdown; this strips any that slips through so headings/bullets/
+ * bold never show up as literal '#'/'*' characters in the UI.
+ */
+function stripMarkdown(s: string): string {
+  return s
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "") // ATX headings
+    .replace(/^\s{0,3}>\s?/gm, "") // blockquotes
+    .replace(/^\s{0,3}([-*+])\s+/gm, "• ") // bullet markers → a plain bullet
+    .replace(/^\s{0,3}(\d+)\.\s+/gm, "$1. ") // keep numbered lists readable
+    .replace(/\*\*(.+?)\*\*/g, "$1") // bold
+    .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, "$1$2") // italics
+    .replace(/`([^`]+)`/g, "$1") // inline code
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
