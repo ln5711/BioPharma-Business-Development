@@ -72,18 +72,21 @@ export async function searchSignalsService(
     .limit(limit * 2);
 
   const lower = (s: string | null) => (s ?? "").toLowerCase();
-  // A named target / drug / sponsor is a hard constraint here too — a signal
-  // that mentions none of them is not a result for this query.
-  const must = [
-    ...p.biomarkers.map((x) => x.toLowerCase()),
-    ...p.assets.map((x) => x.toLowerCase()),
-    ...p.companies.map((x) => x.toLowerCase()),
-  ];
+  // Named target / drug / sponsor are hard constraints here too, and each KIND
+  // must be satisfied — "Amgen KRAS" needs an Amgen signal about KRAS, not any
+  // KRAS signal. Mirrors the trial relevance gate.
+  const sciMust = [...p.biomarkers, ...p.assets].map((x) => x.toLowerCase());
+  const coMust = p.companies.map((x) => x.toLowerCase());
+  const has = (needle: string, h: string) =>
+    needle.includes(" ") ? h.includes(needle) || h.includes(needle.split(" ")[0]) : h.includes(needle);
   const scored = rows
     .filter((r) => {
-      if (!must.length) return true;
+      if (!sciMust.length && !coMust.length) return true;
       const h = `${lower(r.headline)} ${lower(r.factSummary)} ${lower(r.org)} ${lower(r.nct)}`;
-      return must.some((m) => (m.includes(" ") ? h.includes(m) || h.includes(m.split(" ")[0]) : h.includes(m)));
+      const coH = `${lower(r.headline)} ${lower(r.org)}`;
+      const sciOk = !sciMust.length || sciMust.some((m) => has(m, h));
+      const coOk = !coMust.length || coMust.some((m) => has(m, coH));
+      return sciOk && coOk;
     })
     .map((r) => {
     let s = r.opportunityScore ? r.opportunityScore / 20 : 0;

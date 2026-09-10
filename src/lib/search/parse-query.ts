@@ -327,7 +327,10 @@ export function parseQuery(raw: string): ParsedQuery {
     trials: !priorities && (mentionsTrial || nctIds.length > 0 || (hasEntity && !mentionsCompany && !mentionsPeople)),
     companies: !priorities && (mentionsCompany || (companies.size > 0 && !mentionsTrial && !mentionsPeople)),
     people: !priorities && mentionsPeople,
-    signals: !priorities && (mentionsSignal || (freshness.wants && hasEntity)),
+    // A signal/news word triggers the signals lane. A bare date window does too
+    // ("recent Novartis"), but NOT when the query explicitly asks for trials —
+    // "new KRAS trials this month" is trial discovery, not a news scan.
+    signals: !priorities && (mentionsSignal || (freshness.wants && hasEntity && !mentionsTrial)),
     priorities,
   };
   // Guarantee at least one search lane when it isn't a priorities prompt.
