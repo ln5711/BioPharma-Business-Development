@@ -71,3 +71,16 @@ test("external research only when explicitly asked", () => {
     true,
   );
 });
+
+test("a company name with a trailing descriptor splits into company + topic", () => {
+  const i = parseIntentHeuristic("Search the web for Novartis oncology developments", ctx);
+  assert.ok(i.companies.includes("Novartis"));
+  assert.ok(!i.companies.some((c) => /oncology/i.test(c)), "'oncology' must not be glued to the company");
+  assert.ok(i.topics.includes("oncology"));
+  assert.equal(i.wantsExternalResearch, true);
+});
+
+test("'latest ... news' triggers external research", () => {
+  assert.equal(parseIntentHeuristic("latest Merck KRAS news", ctx).wantsExternalResearch, true);
+  assert.equal(parseIntentHeuristic("what changed at Merck", ctx).wantsExternalResearch, false);
+});

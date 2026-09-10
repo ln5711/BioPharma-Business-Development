@@ -76,23 +76,50 @@ test("nonsense keyword → explicit no-results", opts, async () => {
   assert.equal(r.cards.length, 0);
 });
 
-test("real Claude answer (records request id + usage)", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+test("real Claude answer over workspace evidence (records request id + usage)", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
   const r = await runAsk({ query: "Summarise the KRAS trial landscape in this workspace", ctx, page: {} });
-  console.log("  mode:", r.mode, "| model:", r.meta.model, "| requestId:", r.meta.requestId, "| usage:", JSON.stringify(r.meta.usage));
+  console.log("  synthesis:", r.meta.synthesis, "| model:", r.meta.model, "| requestId:", r.meta.requestId, "| usage:", JSON.stringify(r.meta.usage));
+  assert.equal(r.meta.synthesis, "ok");
   assert.ok(r.meta.model, "expected a model id");
-  assert.ok(r.meta.requestId, "expected an Anthropic request id");
-  assert.ok(r.answer.length > 40);
+  assert.ok(r.meta.requestId, "expected an Anthropic request id for the final answer");
+  assert.ok(r.answer.length > 120, "expected a substantive summary");
+  assert.ok(!/no matching records|AI summary unavailable/i.test(r.answer), "must not be the fallback text");
 });
 
-test("explicit web-search request returns external citations", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+test("explicit web-search returns a SUBSTANTIVE dated summary, not a no-results message + links", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
   const r = await runAsk({
-    query: "Search the web for the latest FDA news on KRAS G12C inhibitors",
+    query: "Search the web for the latest FDA news on Novartis oncology developments",
     ctx,
     page: {},
   });
   const external = r.sources.filter((s) => s.kind === "external");
-  console.log("  mode:", r.mode, "| external citations:", external.length, "| requestId:", r.meta.requestId);
-  for (const s of external.slice(0, 5)) console.log("   -", s.url);
+  console.log("  mode:", r.mode, "| synthesis:", r.meta.synthesis);
+  console.log("  researchRequestId:", r.meta.researchRequestId, "| finalRequestId:", r.meta.requestId, "| usage:", JSON.stringify(r.meta.usage));
+  console.log("  citations:", external.length, "| workspaceNote:", r.workspaceNote);
+  console.log("  answer[0..400]:", r.answer.slice(0, 400).replace(/\n/g, " "));
+
   assert.equal(r.mode, "external+ai");
+  assert.equal(r.meta.synthesis, "ok");
+  assert.ok(r.meta.researchRequestId, "expected the web_search call's Anthropic request id");
   assert.ok(external.length > 0, "expected web_search citations");
+  // The PRIMARY answer must be a real summary — not the workspace no-results text.
+  assert.ok(r.answer.length > 200, "answer should be a real briefing");
+  assert.ok(
+    !/no account called|is in your workspace|add it as a monitored company|ask me to search external/i.test(r.answer),
+    "the primary answer must NOT be the workspace no-results message",
+  );
+  // Workspace state is a SEPARATE note.
+  assert.ok(r.workspaceNote && /workspace/i.test(r.workspaceNote));
+  assert.ok(!/no account called/i.test(r.workspaceNote), "workspaceNote is a plain note, not the old message");
+});
+
+test("web-search citations are deduplicated (no regional/syndicated repeats)", { ...opts, skip: opts.skip || !HAS_LLM }, async () => {
+  const r = await runAsk({
+    query: "Search the web for recent Pfizer oncology press releases",
+    ctx,
+    page: {},
+  });
+  const urls = r.sources.filter((s) => s.kind === "external").map((s) => s.url);
+  assert.equal(new Set(urls).size, urls.length, "no duplicate URLs");
+  console.log("  distinct citation hosts:", [...new Set(urls.map((u) => { try { return new URL(u!).hostname; } catch { return u; } }))]);
 });

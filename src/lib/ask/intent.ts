@@ -21,6 +21,8 @@ export const IntentSchema = z.object({
   assets: z.array(z.string().max(120)).max(6).default([]),
   biomarkers: z.array(z.string().max(80)).max(8).default([]),
   indications: z.array(z.string().max(120)).max(6).default([]),
+  /** Free-text topic words like "oncology", "pipeline", "regulatory". */
+  topics: z.array(z.string().max(60)).max(6).default([]),
   phases: z
     .array(z.enum(["1", "1/2", "2", "2/3", "3", "4"]))
     .max(6)
@@ -133,6 +135,30 @@ export function parseIntentHeuristic(query: string, ctx: IntentContext): AskInte
   }
   if (ctx.contextCompany && companies.size === 0) companies.add(ctx.contextCompany.name);
 
+  // Split trailing generic descriptors off a company name:
+  // "Novartis oncology" → company "Novartis" + topic "oncology".
+  const TOPIC_WORDS = new Set([
+    "oncology", "pharma", "pharmaceutical", "pharmaceuticals", "therapeutics",
+    "biosciences", "bioscience", "biopharma", "biotech", "biotechnology",
+    "pipeline", "regulatory", "financing", "partnerships", "partnership",
+    "leadership", "diagnostics", "genomics", "immunology", "hematology",
+  ]);
+  const topics = new Set<string>();
+  for (const raw of [...companies]) {
+    const parts = raw.split(/\s+/);
+    while (parts.length > 1 && TOPIC_WORDS.has(parts[parts.length - 1].toLowerCase())) {
+      topics.add(parts.pop()!.toLowerCase());
+    }
+    if (parts.join(" ") !== raw) {
+      companies.delete(raw);
+      if (parts.length) companies.add(parts.join(" "));
+    }
+  }
+  for (const w of lower.split(/\s+/)) {
+    const c = w.replace(/[^a-z]/g, "");
+    if (TOPIC_WORDS.has(c)) topics.add(c);
+  }
+
   const biomarkers = [
     ...new Set(
       [...q.matchAll(/\b(KRAS(?:\s?G12[CD])?|NRAS|HRAS|EGFR|ALK|ROS1|MET|RET|BRAF|HER2|NTRK|FGFR|IDH1|IDH2|BRCA|MSI-H|TMB|PD-L1|ctDNA|MRD)\b/gi)].map(
@@ -193,12 +219,13 @@ export function parseIntentHeuristic(query: string, ctx: IntentContext): AskInte
     assets: [],
     biomarkers,
     indications,
+    topics: [...topics],
     phases,
     statuses,
     nctIds,
     timeframeDays,
     wantsExternalResearch:
-      /search the web|look online|latest news|current(ly)?|beyond (the )?database|external/.test(
+      /search the web|web search|look online|google |on the internet|latest[^.]{0,40}\b(news|updates?|announcements?|developments?|readouts?)\b|newest\b|recent(ly)? announc|press release|current(ly)?|up[ -]to[ -]date|beyond (the )?(saved )?(database|workspace|records)|external (source|research)/.test(
         lower,
       ),
     refersToPreviousResult,
@@ -231,8 +258,9 @@ export async function extractIntent(
         "You extract structured search intent for a clinical-trial / oncology BD assistant. " +
         "Rules: an explicit company, biomarker, indication, phase or NCT id in the QUESTION always takes priority over vague words like 'today' or 'what changed'. " +
         "Page context only fills gaps. Do not invent entities that are not present. " +
+        "companies holds ONLY the organisation name (e.g. 'Novartis'); put descriptor words like 'oncology', 'pipeline', 'regulatory', 'pharma' in topics, never in companies. " +
         "timeframeDays: 1 for today/overnight, 7 for this week, 30 for this month, else null. " +
-        "Set wantsExternalResearch=true only if the user explicitly asks to look beyond saved data / online / for the latest news.",
+        "Set wantsExternalResearch=true if the user asks to look beyond saved data / online / for the latest or recently-announced news / press releases.",
       prompt:
         `Question: ${query}\n` +
         (ctx.contextCompany ? `Page context: viewing account "${ctx.contextCompany.name}"\n` : "") +
@@ -244,8 +272,19 @@ export async function extractIntent(
       signal,
       timeoutMs: 20_000,
     });
-    // Never let the model drop an NCT id / company the user literally typed.
+    // Never let the model drop an NCT id the user literally typed.
     for (const n of heuristic.nctIds) if (!intent.nctIds.includes(n)) intent.nctIds.push(n);
+    for (const t of heuristic.topics) if (!intent.topics.includes(t)) intent.topics.push(t);
+    // Defensive: strip any descriptor the model left glued onto a company name.
+    intent.companies = intent.companies.map((c) => {
+      const parts = c.split(/\s+/);
+      while (parts.length > 1 && heuristic.topics.includes(parts[parts.length - 1].toLowerCase())) {
+        parts.pop();
+      }
+      return parts.join(" ");
+    });
+    // The user asking for "latest / online" wins even if the model missed it.
+    intent.wantsExternalResearch = intent.wantsExternalResearch || heuristic.wantsExternalResearch;
     return { intent: IntentSchema.parse(intent), source: "model" };
   } catch {
     return { intent: heuristic, source: "heuristic" };

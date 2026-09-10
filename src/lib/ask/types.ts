@@ -9,6 +9,9 @@ export interface AskSource {
   date: string | null;
 }
 
+/** How the model synthesis step went. */
+export type SynthesisState = "ok" | "skipped" | "failed" | "no_model";
+
 export interface AskCard {
   kind: string;
   title: string;
@@ -24,7 +27,10 @@ export interface AskResponse {
   status: AskStatus;
   /** How the answer was produced. */
   mode: "database" | "database+ai" | "external+ai" | "unavailable";
+  /** The primary answer (a web-research summary, a workspace analysis, or an honest error). */
   answer: string;
+  /** Separate note about the workspace when the primary answer is external research. */
+  workspaceNote: string | null;
   cards: AskCard[];
   sources: AskSource[];
   conversationId: string | null;
@@ -33,9 +39,15 @@ export interface AskResponse {
     intent: string;
     intentSource: "model" | "heuristic";
     model: string | null;
+    /** Request id of the FINAL answer-producing Anthropic call. */
     requestId: string | null;
     usage: { input_tokens?: number; output_tokens?: number } | null;
+    /** Request id of the web_search research call, when one ran. */
+    researchRequestId: string | null;
     retrieval: { tool: string; count: number }[];
     aiConfigured: boolean;
+    synthesis: SynthesisState;
+    /** Set when synthesis failed / was skipped, for an honest UI. */
+    synthesisError: string | null;
   };
 }

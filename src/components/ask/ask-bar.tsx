@@ -19,10 +19,12 @@ interface AskSource {
 }
 interface AskResponse {
   answer: string;
+  workspaceNote?: string | null;
   cards: AskCard[];
   sources?: AskSource[];
   status?: "ok" | "no_results" | "unavailable" | "error";
   mode?: string;
+  meta?: { synthesis?: string; synthesisError?: string | null };
 }
 
 /** Coerce any API payload into something the panel can always render. */
@@ -31,10 +33,12 @@ function normalize(status: number, body: unknown): AskResponse {
   if (typeof o.answer === "string") {
     return {
       answer: o.answer,
+      workspaceNote: typeof o.workspaceNote === "string" ? o.workspaceNote : null,
       cards: Array.isArray(o.cards) ? (o.cards as AskCard[]) : [],
       sources: Array.isArray(o.sources) ? (o.sources as AskSource[]) : [],
       status: (o.status as AskResponse["status"]) ?? "ok",
       mode: typeof o.mode === "string" ? o.mode : undefined,
+      meta: (o.meta as AskResponse["meta"]) ?? undefined,
     };
   }
   // Non-standard payload (error envelope, etc.) — surface it honestly.
@@ -216,32 +220,64 @@ function ResultPanel({
                 Ask newwin AI is unavailable — showing database results only.
               </div>
             ) : null}
-            <p className="text-[13.5px] leading-[1.6] text-[var(--body)]">{res.answer}</p>
-            {res.mode === "external+ai" || (res.sources ?? []).some((s) => s.kind === "external") ? (
+
+            {res.mode === "external+ai" ? (
               <div
-                className="mt-2 text-[10px] uppercase"
-                style={{ letterSpacing: ".14em", color: "var(--faint)", fontFamily: "var(--font-mono)" }}
+                className="mb-1.5 text-[10px] uppercase"
+                style={{ letterSpacing: ".14em", color: "var(--accent)", fontFamily: "var(--font-mono)" }}
               >
-                Answer includes current web sources
+                Web research
               </div>
             ) : null}
+
+            <p className="whitespace-pre-wrap text-[13.5px] leading-[1.6] text-[var(--body)]">
+              {res.answer}
+            </p>
+
+            {res.meta?.synthesis === "failed" ? (
+              <div className="mt-2 text-[12px]" style={{ color: "#F0866A" }}>
+                The summary step failed{res.meta.synthesisError ? ` (${res.meta.synthesisError})` : ""}.
+                The retrieved links are below.
+              </div>
+            ) : null}
+
             {(res.sources ?? []).filter((s) => s.kind === "external" && s.url).length > 0 ? (
-              <ul className="mt-1.5 flex flex-col gap-1">
-                {res.sources!
-                  .filter((s) => s.kind === "external" && s.url)
-                  .map((s, i) => (
-                    <li key={i} className="text-[12px]">
-                      <a
-                        href={s.url!}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[var(--accent)] underline decoration-dotted"
-                      >
-                        {s.label} ↗
-                      </a>
-                    </li>
-                  ))}
-              </ul>
+              <>
+                <div
+                  className="mt-3 text-[10px] uppercase"
+                  style={{ letterSpacing: ".14em", color: "var(--faint)", fontFamily: "var(--font-mono)" }}
+                >
+                  Current web sources
+                </div>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {res.sources!
+                    .filter((s) => s.kind === "external" && s.url)
+                    .map((s, i) => (
+                      <li key={i} className="text-[12px]">
+                        <a
+                          href={s.url!}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[var(--accent)] underline decoration-dotted"
+                        >
+                          {s.label} ↗
+                        </a>
+                      </li>
+                    ))}
+                </ul>
+              </>
+            ) : null}
+
+            {res.workspaceNote ? (
+              <div
+                className="mt-3 rounded-[8px] border px-3 py-2 text-[12px] text-[var(--muted)]"
+                style={{ borderColor: "var(--card-border)" }}
+              >
+                <span className="uppercase" style={{ letterSpacing: ".12em", fontFamily: "var(--font-mono)", fontSize: 10 }}>
+                  Your workspace
+                </span>{" "}
+                {res.workspaceNote}
+              </div>
             ) : null}
             {Array.isArray(res.cards) && res.cards.length > 0 ? (
               <div className="mt-3 flex flex-col gap-2.5">

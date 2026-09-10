@@ -14,7 +14,8 @@ import {
   type TrialPhase,
   type TrialStatus,
 } from "./retrieval";
-import type { AskCard, AskResponse, AskSource } from "./types";
+import type { AskCard, AskResponse, AskSource, SynthesisState } from "./types";
+import type { WebSearchCitation } from "@/lib/llm";
 
 const PHASE_TO_ENUM: Record<string, TrialPhase[]> = {
   "1": ["phase_1", "early_phase_1"],
@@ -182,31 +183,12 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
     }
   }
 
-  // ── external research (only when explicitly requested) ───────────────────
-  let externalCitations: { url: string; title: string; citedText?: string }[] = [];
-  let externalText = "";
-  let mode: AskResponse["mode"] = client ? "database+ai" : "database";
-  if (intent.wantsExternalResearch && client && status.webSearch) {
-    try {
-      const r = await client.research({
-        system:
-          "You are researching current oncology / clinical-trial developments. Prefer primary sources: " +
-          "company press releases, ClinicalTrials.gov, and peer-reviewed publications. Cite every claim. " +
-          "Do not rely on training memory for anything time-sensitive — use the search tool.",
-        prompt: `Question: ${input.query}\nReturn a concise, cited answer using current sources.`,
-        maxUses: 4,
-        signal: input.signal,
-      });
-      externalText = r.text;
-      externalCitations = r.citations;
-      mode = "external+ai";
-      retrieval.push({ tool: "web_search", count: r.citations.length });
-    } catch {
-      // fall through to DB-only answer; noted in the response
-    }
-  }
-
-  // ── compose the answer ─────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Compose the answer. Two independent paths that never overwrite each other:
+  //   • wantsExternalResearch  → a web-research summary is the PRIMARY answer;
+  //                              the workspace state is a separate note.
+  //   • otherwise               → a workspace analysis (or an honest no-results).
+  // ─────────────────────────────────────────────────────────────────────────
   const evidenceForModel = evidence.slice(0, 20).map((e, i) => ({
     n: i + 1,
     kind: e.kind,
@@ -219,50 +201,151 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
     sourceUrl: e.sourceUrl,
   }));
 
-  let answer: string;
+  let answer = "";
+  let workspaceNote: string | null = null;
+  let mode: AskResponse["mode"] = client ? "database+ai" : "database";
+  let synthesis: SynthesisState = "skipped";
+  let synthesisError: string | null = null;
   let requestId: string | null = null;
+  let researchRequestId: string | null = null;
   let usage: AskResponse["meta"]["usage"] = null;
   let model: string | null = null;
+  let externalCitations: { url: string; title: string }[] = [];
 
-  if (!client) {
-    // No model — deterministic answer from the evidence itself.
-    answer = deterministicAnswer(intent.intent, evidence, noResultsExplanation);
-    mode = "database";
-  } else if (evidence.length === 0 && !externalText) {
-    answer =
-      noResultsExplanation ||
-      "The workspace has no matching records for that question.";
-  } else {
-    try {
-      const rich = await client.generateTextRich({
-        system:
-          "You are Ask newwin, an oncology business-development analyst. Answer the user's exact question. " +
-          "Ground every statement ONLY in the EVIDENCE provided (workspace records) and EXTERNAL RESEARCH (if present). " +
-          "Never introduce companies or trials that are not in the evidence. " +
-          "Cite evidence items as [n]. When you mention a date, say whether it is the event/publication date or when newwin imported the record. " +
-          "If the evidence does not answer the question, say so plainly and do not pad with unrelated items. " +
-          "Keep it to 4-8 sentences. No preamble.",
-        prompt: [
-          `QUESTION: ${input.query}`,
-          intent.timeframeDays ? `TIMEFRAME: last ${intent.timeframeDays} days` : "",
-          `EVIDENCE (workspace records):\n${JSON.stringify(evidenceForModel, null, 1)}`,
-          extra.comparison?.length ? `TRIALS TO COMPARE:\n${JSON.stringify(extra.comparison, null, 1)}` : "",
-          externalText ? `EXTERNAL RESEARCH (current web sources):\n${externalText}` : "",
-          noResultsExplanation ? `NOTE: ${noResultsExplanation}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        temperature: 0.2,
-        signal: input.signal,
-        timeoutMs: 40_000,
-      });
-      answer = rich.text.trim();
-      requestId = rich.meta.requestId;
-      usage = rich.meta.usage;
-      model = rich.meta.model;
-    } catch {
-      answer = deterministicAnswer(intent.intent, evidence, noResultsExplanation);
+  const wantsExternal = intent.wantsExternalResearch;
+
+  if (wantsExternal) {
+    // ── PRIMARY: current web research ──────────────────────────────────────
+    workspaceNote = evidence.length
+      ? `Your workspace also has ${evidence.length} related record${evidence.length === 1 ? "" : "s"} (listed below).`
+      : "Your workspace has no saved records on this topic yet.";
+
+    if (!client || !status.webSearch) {
+      answer =
+        "Web search is unavailable in this environment (no AI provider configured), so I can't pull current sources. " +
+        (evidence.length ? "Here is what your workspace holds instead — see the records below." : "");
+      synthesis = "no_model";
       mode = "database";
+    } else {
+      const focus = [intent.companies[0], ...intent.topics].filter(Boolean).join(" ");
+      let researchText = "";
+      try {
+        const r = await client.research({
+          system:
+            "You research CURRENT developments using the web_search tool. " +
+            "Prefer primary sources: company press releases and investor updates, ClinicalTrials.gov, " +
+            "regulator notices (FDA/EMA), and peer-reviewed journals. " +
+            "Write a readable briefing of 6-12 sentences. Attribute each claim to its source and give the date. " +
+            "Group multiple reports of the same announcement together — do not repeat regional or syndicated versions. " +
+            "Do not rely on training memory for anything time-sensitive.",
+          prompt:
+            `Question: ${input.query}\n` +
+            (focus ? `Focus: ${focus}\n` : "") +
+            "Return a dated, source-attributed summary.",
+          maxUses: 5,
+          signal: input.signal,
+        });
+        researchText = r.text.trim();
+        externalCitations = dedupeCitations(r.citations);
+        researchRequestId = r.meta.requestId;
+        model = r.meta.model;
+        usage = r.meta.usage;
+        retrieval.push({ tool: "web_search", count: externalCitations.length });
+        mode = "external+ai";
+
+        if (researchText.length >= 60) {
+          answer = researchText;
+          requestId = r.meta.requestId;
+          synthesis = "ok";
+        } else if (externalCitations.length > 0) {
+          // Got sources but no usable prose — run one explicit synthesis pass.
+          try {
+            const rich = await client.generateTextRich({
+              system:
+                "Summarise the retrieved web sources into a readable, dated, source-attributed briefing " +
+                "of 6-12 sentences about the exact question. Merge duplicate coverage of the same announcement. " +
+                "Every claim must be traceable to one of the listed sources.",
+              prompt:
+                `QUESTION: ${input.query}\n\nRETRIEVED SOURCES:\n` +
+                externalCitations
+                  .map((c, i) => `[${i + 1}] ${c.title} — ${c.url}`)
+                  .join("\n"),
+              temperature: 0.2,
+              signal: input.signal,
+              timeoutMs: 40_000,
+            });
+            answer = rich.text.trim();
+            requestId = rich.meta.requestId;
+            usage = rich.meta.usage ?? usage;
+            model = rich.meta.model ?? model;
+            synthesis = answer.length >= 40 ? "ok" : "failed";
+            if (synthesis === "failed") synthesisError = "the summary step returned no usable text";
+          } catch (err) {
+            synthesis = "failed";
+            synthesisError = (err as Error)?.message?.slice(0, 160) ?? "synthesis request failed";
+            answer =
+              "I retrieved current web sources but the summary step failed. The links are below — open them directly.";
+          }
+        } else {
+          synthesis = "failed";
+          synthesisError = "web search returned no results";
+          answer = `I searched the web for "${input.query}" but found no usable current sources.`;
+        }
+      } catch (err) {
+        synthesis = "failed";
+        synthesisError = (err as Error)?.message?.slice(0, 160) ?? "web_search request failed";
+        answer =
+          "The web search could not be completed (the AI provider errored). " +
+          (evidence.length ? "Your workspace records are listed below." : "Please try again in a moment.");
+        mode = "database";
+      }
+    }
+  } else {
+    // ── PRIMARY: workspace analysis ───────────────────────────────────────
+    if (!client) {
+      answer = deterministicAnswer(intent.intent, evidence, noResultsExplanation);
+      synthesis = "no_model";
+      mode = "database";
+    } else if (evidence.length === 0) {
+      answer = noResultsExplanation || "The workspace has no matching records for that question.";
+      synthesis = "skipped";
+      mode = "database";
+    } else {
+      try {
+        const rich = await client.generateTextRich({
+          system:
+            "You are Ask newwin, an oncology business-development analyst. Answer the user's exact question. " +
+            "Ground every statement ONLY in the EVIDENCE provided (workspace records). " +
+            "Never introduce companies or trials that are not in the evidence. " +
+            "Cite evidence items as [n]. When you mention a date, say whether it is the event/publication date " +
+            "or when newwin imported the record. If the evidence does not answer the question, say so plainly. " +
+            "Keep it to 4-8 sentences. No preamble.",
+          prompt: [
+            `QUESTION: ${input.query}`,
+            intent.timeframeDays ? `TIMEFRAME: last ${intent.timeframeDays} days` : "",
+            `EVIDENCE (workspace records):\n${JSON.stringify(evidenceForModel, null, 1)}`,
+            extra.comparison?.length
+              ? `TRIALS TO COMPARE:\n${JSON.stringify(extra.comparison, null, 1)}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          temperature: 0.2,
+          signal: input.signal,
+          timeoutMs: 40_000,
+        });
+        answer = rich.text.trim() || deterministicAnswer(intent.intent, evidence, noResultsExplanation);
+        requestId = rich.meta.requestId;
+        usage = rich.meta.usage;
+        model = rich.meta.model;
+        synthesis = rich.text.trim().length >= 30 ? "ok" : "failed";
+        mode = "database+ai";
+      } catch (err) {
+        synthesis = "failed";
+        synthesisError = (err as Error)?.message?.slice(0, 160) ?? "synthesis request failed";
+        answer = deterministicAnswer(intent.intent, evidence, noResultsExplanation);
+        mode = "database";
+      }
     }
   }
 
@@ -298,22 +381,30 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
       (c): AskSource => ({ kind: "external", label: c.title, url: c.url, date: null }),
     ),
   ];
-  if (client && (evidence.length || externalText)) {
+  if (client && synthesis === "ok") {
     sources.push({
       kind: "interpretation",
-      label: "Interpretation & suggested actions are generated by Claude from the evidence above.",
+      label: wantsExternal
+        ? "This summary is written by Claude from the current web sources above."
+        : "Interpretation & suggested actions are generated by Claude from the workspace evidence above.",
       url: null,
       date: null,
     });
   }
 
-  const finalStatus: AskResponse["status"] =
-    evidence.length === 0 && !externalText ? "no_results" : "ok";
+  // Honest final status.
+  let finalStatus: AskResponse["status"];
+  if (wantsExternal) {
+    finalStatus = synthesis === "ok" ? "ok" : externalCitations.length > 0 ? "ok" : "error";
+  } else {
+    finalStatus = evidence.length === 0 ? "no_results" : synthesis === "failed" ? "error" : "ok";
+  }
 
   return {
     status: finalStatus,
     mode,
     answer,
+    workspaceNote,
     cards,
     sources,
     conversationId: input.conversationId ?? null,
@@ -322,9 +413,12 @@ export async function runAsk(input: AskPipelineInput): Promise<AskResponse> {
       intentSource,
       model,
       requestId,
+      researchRequestId,
       usage,
       retrieval,
       aiConfigured: status.configured,
+      synthesis,
+      synthesisError,
     },
   };
 }
@@ -334,6 +428,7 @@ export function unavailableResponse(reason: string): AskResponse {
     status: "unavailable",
     mode: "unavailable",
     answer: `Ask newwin's AI features are unavailable (${reason}). Database search still works — try a company name, an NCT id, or "recruiting KRAS trials in pancreatic cancer".`,
+    workspaceNote: null,
     cards: [],
     sources: [],
     conversationId: null,
@@ -342,11 +437,49 @@ export function unavailableResponse(reason: string): AskResponse {
       intentSource: "heuristic",
       model: null,
       requestId: null,
+      researchRequestId: null,
       usage: null,
       retrieval: [],
       aiConfigured: false,
+      synthesis: "no_model",
+      synthesisError: reason,
     },
   };
+}
+
+/**
+ * Collapse duplicate coverage of the same announcement — exact URL, then a
+ * normalised-title key (so regional / syndicated / press-wire reposts of the
+ * same headline fold into one).
+ */
+function dedupeCitations(list: WebSearchCitation[]): { url: string; title: string }[] {
+  const seenUrl = new Set<string>();
+  const seenKey = new Set<string>();
+  const out: { url: string; title: string }[] = [];
+  for (const c of list) {
+    if (!c.url) continue;
+    let host = "";
+    try {
+      host = new URL(c.url).hostname.replace(/^www\./, "");
+    } catch {
+      /* keep host empty */
+    }
+    if (seenUrl.has(c.url)) continue;
+    const titleKey = (c.title ?? "")
+      .toLowerCase()
+      .replace(/\b(reuters|bloomberg|globenewswire|pr newswire|businesswire|yahoo|fierce\w*)\b/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(" ")
+      .slice(0, 10)
+      .join(" ");
+    const key = titleKey.length > 12 ? titleKey : `${host}|${titleKey}`;
+    if (key && seenKey.has(key)) continue;
+    seenUrl.add(c.url);
+    if (key) seenKey.add(key);
+    out.push({ url: c.url, title: c.title || c.url });
+  }
+  return out;
 }
 
 function deterministicAnswer(intent: string, evidence: Evidence[], noResults: string): string {
