@@ -19,6 +19,8 @@ export interface CtgovStudy {
       primaryCompletionDateStruct?: { date?: string };
       completionDateStruct?: { date?: string };
       lastUpdatePostDateStruct?: { date?: string };
+      studyFirstPostDateStruct?: { date?: string };
+      studyFirstSubmitDateStruct?: { date?: string };
     };
     sponsorCollaboratorsModule?: {
       leadSponsor?: { name?: string; class?: string };
@@ -85,6 +87,13 @@ export interface CtgovQuery {
   statuses?: string[];
   /** Phase filter values, e.g. ["PHASE1","PHASE2"]. */
   phases?: string[];
+  /**
+   * Raw Essie expressions for `filter.advanced`, AND-ed together, e.g.
+   * "AREA[Phase](PHASE2 OR PHASE3)", "AREA[LastUpdatePostDate]RANGE[2026-09-01,MAX]".
+   */
+  advanced?: string[];
+  /** Restrict to a single NCT id (exact lookup). */
+  nctId?: string;
   /** Hard cap on studies pulled per run. */
   maxStudies?: number;
 }

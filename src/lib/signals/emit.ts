@@ -192,6 +192,32 @@ function buildHeadline(args: EmitSignalArgs): string {
   return `${meta.label} — ${args.trial.title ?? args.trial.nctId}`;
 }
 
+const absDate = (d: Date | null): string =>
+  d
+    ? d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
+    : "unknown date";
+const relDays = (n: number): string =>
+  n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`;
+
+/**
+ * `whyNow` must state WHICH date `sourceDate` represents — never call a
+ * first-posted date an "update" (spec: date semantics). NEW_TRIAL /
+ * TRIAL_MONITORING_STARTED carry the first-posted date; every other
+ * ClinicalTrials.gov signal carries the Last Update Posted date.
+ */
+export function buildWhyNow(signalType: string, sourceDate: Date | null, ageDays: number): string {
+  if (!sourceDate) return "Detected on the latest ClinicalTrials.gov refresh.";
+  if (signalType === "NEW_TRIAL") {
+    return `First posted on ClinicalTrials.gov ${absDate(sourceDate)} (${relDays(ageDays)}).`;
+  }
+  if (signalType === "TRIAL_MONITORING_STARTED") {
+    return `Historical trial — first posted on ClinicalTrials.gov ${absDate(
+      sourceDate,
+    )}. Added to newwin monitoring today; not a new development.`;
+  }
+  return `ClinicalTrials.gov "Last Update Posted" ${absDate(sourceDate)} (${relDays(ageDays)}).`;
+}
+
 function buildInterpretation(
   args: EmitSignalArgs,
   score: number,
@@ -227,9 +253,7 @@ function buildInterpretation(
       ? `${meta.label} on a ${t.phase.replace("_", " ")} ${t.status.replace(/_/g, " ")} study is a moment when external vendors are commonly selected or expanded (spec §70).`
       : `Signal recorded for landscape awareness.`;
 
-  const whyNow = args.sourceDate
-    ? `ClinicalTrials.gov record updated ${ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"} ago`}.`
-    : `Detected on the latest ClinicalTrials.gov refresh.`;
+  const whyNow = buildWhyNow(args.signalType, args.sourceDate, ageDays);
 
   const recommendedAction = suppressed
     ? `Notify the account owner. Pause active outreach. Re-evaluate once the program's direction is clear.`

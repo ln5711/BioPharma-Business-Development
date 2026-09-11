@@ -11,7 +11,8 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const status = await getOnboardingStatus();
-  if (status.needsOnboarding) redirect("/welcome");
+  // Signed out, or session valid but onboarding not finished → public welcome.
+  if (!status.authenticated || status.needsOnboarding) redirect("/welcome");
   const { user } = await getActiveTenant();
 
   return (

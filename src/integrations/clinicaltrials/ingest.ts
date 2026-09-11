@@ -35,6 +35,13 @@ export interface IngestStats {
 const STUDY_URL = (nct: string) => `https://clinicaltrials.gov/study/${nct}`;
 
 /**
+ * How recently a trial must have been FIRST POSTED on ClinicalTrials.gov to
+ * count as a genuine "New trial" signal. Anything older that newwin imports
+ * today is a `TRIAL_MONITORING_STARTED` bookkeeping event instead. Configurable.
+ */
+export const NEW_TRIAL_RECENCY_DAYS = Number(process.env.NEW_TRIAL_RECENCY_DAYS ?? 45);
+
+/**
  * Full ClinicalTrials.gov ingestion pass for one tenant watchlist
  * (spec §6 / §58 / §116). fetch → normalize → resolveEntities → snapshot →
  * detectChanges → emitSignals. Idempotent: an unchanged record on the next
@@ -156,6 +163,87 @@ export async function ingestWatchlist(
   return stats;
 }
 
+/**
+ * Import a SINGLE ClinicalTrials.gov study into a tenant's workspace by NCT id —
+ * the "Save to workspace" action from Ask newwin's public-research results.
+ * Reuses the full ingest path (normalize → snapshot → signal), so a saved trial
+ * behaves exactly like one picked up by a watchlist. Idempotent: saving the same
+ * NCT twice updates the existing row rather than duplicating it.
+ *
+ * Returns `{ imported, alreadyPresent }` — `imported` is false only when the
+ * study id does not resolve at ClinicalTrials.gov.
+ */
+export async function importTrialByNct(
+  db: Db,
+  tenantId: string,
+  nctId: string,
+): Promise<{ imported: boolean; alreadyPresent: boolean; nctId: string }> {
+  const id = nctId.trim().toUpperCase();
+  if (!/^NCT\d{8}$/.test(id)) throw new Error(`invalid NCT id: ${nctId}`);
+
+  const [existing] = await db
+    .select({ id: trials.id })
+    .from(trials)
+    .where(and(eq(trials.tenantId, tenantId), eq(trials.nctId, id)))
+    .limit(1);
+
+  const study = await new CtgovClient().fetchOne(id);
+  if (!study) return { imported: false, alreadyPresent: !!existing, nctId: id };
+
+  const capability = await loadCapability(db, tenantId);
+  const stats: IngestStats = {
+    fetched: 1,
+    newTrials: 0,
+    updatedTrials: 0,
+    unchangedTrials: 0,
+    trialChanges: 0,
+    signalsCreated: 0,
+    signalsUpdated: 0,
+    errors: 0,
+  };
+  await ingestStudy(db, tenantId, study, capability, undefined, stats);
+  return { imported: true, alreadyPresent: !!existing, nctId: id };
+}
+
+/**
+ * Persist a batch of already-fetched ClinicalTrials.gov studies into a tenant's
+ * workspace — used by the search service to opportunistically save trials it
+ * pulled live so they are locally searchable next time. Bounded, best-effort:
+ * an error on one study does not abort the batch. Reuses the full ingest path
+ * (normalize → snapshot → diff → signal), so persisted rows are indistinguishable
+ * from watchlist-ingested ones.
+ */
+export async function ingestStudies(
+  db: Db,
+  tenantId: string,
+  studies: CtgovStudy[],
+  opts: { cap?: number } = {},
+): Promise<IngestStats> {
+  const stats: IngestStats = {
+    fetched: 0,
+    newTrials: 0,
+    updatedTrials: 0,
+    unchangedTrials: 0,
+    trialChanges: 0,
+    signalsCreated: 0,
+    signalsUpdated: 0,
+    errors: 0,
+  };
+  const cap = Math.max(0, Math.min(opts.cap ?? 15, studies.length));
+  if (cap === 0) return stats;
+  const capability = await loadCapability(db, tenantId);
+  for (const study of studies.slice(0, cap)) {
+    stats.fetched += 1;
+    try {
+      await ingestStudy(db, tenantId, study, capability, undefined, stats);
+    } catch (err) {
+      stats.errors += 1;
+      console.error("ctgov ingestStudies error", (err as Error).message);
+    }
+  }
+  return stats;
+}
+
 async function ingestStudy(
   db: Db,
   tenantId: string,
@@ -201,16 +289,39 @@ async function ingestStudy(
       })
       .returning({ id: trialSnapshots.id });
 
+    // Distinguish a genuinely new posting from a historical trial we are just
+    // now importing. `firstPostedDate` = when ClinicalTrials.gov first published
+    // the study. If that is inside NEW_TRIAL_RECENCY_DAYS it is a real "new
+    // trial"; otherwise newwin simply STARTED MONITORING an existing study
+    // (via search or a watchlist's first pass) — a bookkeeping event, not a
+    // development. Both carry the true first-posted date as `sourceDate`.
+    const firstPosted = next.firstPostedDate;
+    const importDate = new Date();
+    const isHistorical =
+      !firstPosted ||
+      importDate.getTime() - firstPosted.getTime() > NEW_TRIAL_RECENCY_DAYS * 86_400_000;
+    const isoDay = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "unknown");
+    const phaseLabel = next.phase.replace(/_/g, " ");
+    const factSummary = isHistorical
+      ? `Now monitoring ${next.nctId} (${phaseLabel}). First posted on ClinicalTrials.gov ${isoDay(
+          firstPosted,
+        )}; last CT.gov update ${isoDay(next.lastCtgovUpdate)}; imported into newwin ${isoDay(
+          importDate,
+        )}. Sponsor: ${next.sponsorName ?? "unknown"}. "${next.title ?? ""}".`
+      : `New ${phaseLabel} trial ${next.nctId} first posted ${isoDay(firstPosted)} by ${
+          next.sponsorName ?? "unknown sponsor"
+        }: "${next.title ?? ""}".`;
+
     const res = await emitSignal(db, {
       tenantId,
-      signalType: "NEW_TRIAL",
+      signalType: isHistorical ? "TRIAL_MONITORING_STARTED" : "NEW_TRIAL",
       organizationId,
       trial: trialCtx(trialRow.id, next),
-      factSummary: `New ${next.phase.replace("_", " ")} trial ${next.nctId} posted by ${
-        next.sponsorName ?? "unknown sponsor"
-      }: "${next.title ?? ""}".`,
-      changeRelevance: 65,
-      sourceDate: next.lastCtgovUpdate,
+      factSummary,
+      changeRelevance: isHistorical ? 20 : 65,
+      // `sourceDate` is the trial's real first-posted date for both — never the
+      // import/refresh date. Downstream renders it as "first posted", not "updated".
+      sourceDate: firstPosted ?? next.lastCtgovUpdate,
       sourceUrl: STUDY_URL(next.nctId),
       capability,
       account,
@@ -430,6 +541,7 @@ function toTrialInsert(
     primaryCompletionDate: n.primaryCompletionDate,
     completionDate: n.completionDate,
     lastCtgovUpdate: n.lastCtgovUpdate,
+    firstPostedDate: n.firstPostedDate,
     molecularEligibility: n.molecularEligibility,
     biomarkerRequirements: n.biomarkerRequirements,
     ctdnaMentions: n.ctdnaMentions,

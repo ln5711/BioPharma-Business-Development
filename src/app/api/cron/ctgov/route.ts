@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { tenants, watchlists } from "@/db/schema";
+import { jobRuns, tenants, watchlists } from "@/db/schema";
 import { env } from "@/lib/env";
 import { ingestWatchlist } from "@/integrations/clinicaltrials/ingest";
 
@@ -10,18 +10,46 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * Background ingestion endpoint (spec §59 / §60). Trigger from cron / a queue:
- *   curl -X POST -H "x-cron-secret: $CRON_SECRET" localhost:3000/api/cron/ctgov
- * Idempotent and safe to run daily after the upstream ClinicalTrials.gov refresh.
+ * Scheduled ClinicalTrials.gov ingestion.
+ *
+ * Vercel Cron calls this with `GET` and `Authorization: Bearer $CRON_SECRET`
+ * (see `vercel.json`). A manual trigger may also use `POST` with either that
+ * header or `x-cron-secret: $CRON_SECRET`:
+ *   curl -H "x-cron-secret: $CRON_SECRET" https://<host>/api/cron/ctgov
+ *
+ * Fails closed if CRON_SECRET is unset / the dev default in production. Bounded
+ * per run, idempotent (ingestWatchlist dedupes), and the response reports
+ * partial failures instead of a blanket `ok: true`.
  */
-export async function POST(req: Request) {
-  if (req.headers.get("x-cron-secret") !== env.CRON_SECRET) {
+const DEV_CRON_SECRET = "dev-only-change-me";
+const PER_RUN_STUDY_CAP = 300;
+
+function authorized(req: Request): boolean {
+  const secret = env.CRON_SECRET;
+  if (process.env.NODE_ENV === "production" && (!secret || secret === DEV_CRON_SECRET)) {
+    return false; // fail closed — no usable secret configured
+  }
+  const bearer = req.headers.get("authorization");
+  if (bearer && bearer === `Bearer ${secret}`) return true;
+  if (req.headers.get("x-cron-secret") === secret) return true;
+  return false;
+}
+
+async function run(req: Request) {
+  if (!authorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const db = await getDb();
+  const [overall] = await db
+    .insert(jobRuns)
+    .values({ jobName: "ctgov:cron", status: "running" })
+    .returning({ id: jobRuns.id });
+
   const allTenants = await db.select().from(tenants).orderBy(asc(tenants.createdAt));
   const results: Record<string, unknown>[] = [];
+  let watchlistsRun = 0;
+  let failures = 0;
 
   for (const tenant of allTenants) {
     const lists = await db
@@ -29,14 +57,24 @@ export async function POST(req: Request) {
       .from(watchlists)
       .where(eq(watchlists.tenantId, tenant.id));
     for (const wl of lists) {
+      watchlistsRun += 1;
       try {
         const stats = await ingestWatchlist(db, {
           tenantId: tenant.id,
           watchlistId: wl.id,
-          maxStudies: 300,
+          maxStudies: PER_RUN_STUDY_CAP,
         });
+        console.log(
+          `[cron:ctgov] tenant=${tenant.slug} watchlist="${wl.name}" fetched=${stats.fetched} ` +
+            `new=${stats.newTrials} updated=${stats.updatedTrials} unchanged=${stats.unchangedTrials} ` +
+            `changes=${stats.trialChanges} signals=${stats.signalsCreated}/${stats.signalsUpdated} errors=${stats.errors}`,
+        );
         results.push({ tenant: tenant.slug, watchlist: wl.name, stats });
       } catch (err) {
+        failures += 1;
+        console.error(
+          `[cron:ctgov] tenant=${tenant.slug} watchlist="${wl.name}" FAILED: ${(err as Error).message}`,
+        );
         results.push({
           tenant: tenant.slug,
           watchlist: wl.name,
@@ -46,5 +84,29 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, ranAt: new Date().toISOString(), results });
+  const ok = failures === 0;
+  console.log(
+    `[cron:ctgov] done tenants=${allTenants.length} watchlists=${watchlistsRun} failures=${failures}`,
+  );
+  await db
+    .update(jobRuns)
+    .set({
+      status: ok ? "success" : "error",
+      finishedAt: new Date(),
+      error: ok ? null : `${failures}/${watchlistsRun} watchlist runs failed`,
+      stats: { watchlistsRun, failures },
+    })
+    .where(eq(jobRuns.id, overall.id));
+
+  return NextResponse.json(
+    { ok, ranAt: new Date().toISOString(), watchlistsRun, failures, results },
+    { status: ok ? 200 : 207 },
+  );
+}
+
+export async function GET(req: Request) {
+  return run(req);
+}
+export async function POST(req: Request) {
+  return run(req);
 }

@@ -14,7 +14,14 @@
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset.ts",
     "seed": "tsx scripts/seed.ts",
-    "ingest:ctgov": "tsx scripts/ingest-ctgov.ts"
+    "ingest:ctgov": "tsx scripts/ingest-ctgov.ts",
+    "db:migrate:status": "tsx scripts/migrate-status.ts",
+    "test": "TSX_TSCONFIG_PATH=tests/tsconfig.json node --import tsx --test tests/**/*.test.ts",
+    "db:backfill:dates": "tsx scripts/backfill-trial-dates.ts",
+    "verify:anthropic": "tsx scripts/verify-anthropic.ts",
+    "db:inspect": "tsx scripts/inspect-db.ts",
+    "db:baseline": "tsx scripts/baseline-migrations.ts",
+    "db:seed:preview": "tsx scripts/seed-preview-data.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

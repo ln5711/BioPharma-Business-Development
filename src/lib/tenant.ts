@@ -1,57 +1,78 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { organizationMembers, tenants, users } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 
-export type ActiveTenant = {
+export type AuthContext = {
   tenant: typeof tenants.$inferSelect;
   user: typeof users.$inferSelect;
-  /** null when falling back to the seeded demo workspace (no session). */
-  authenticated: boolean;
+  /** Always true for a resolved context — kept for call-site compatibility. */
+  authenticated: true;
 };
 
 /**
- * Resolves the active USER + ORGANIZATION/WORKSPACE.
+ * Resolves the signed-in USER and their ORGANIZATION/WORKSPACE from a verified
+ * session, or `null`.
  *
- *  1. A valid signed session → that user + their organization (membership checked).
- *  2. No session → the first seeded tenant/user, so the demo data still renders.
+ * There is deliberately NO fallback to "the first user / first tenant in the
+ * database": production identity must come from an authenticated session and an
+ * authoritative `organization_members` row. If the session names a tenant the
+ * user is not a member of, that is a failure — we do not silently substitute
+ * `user.tenantId`.
  */
-export async function getActiveTenant(): Promise<ActiveTenant> {
-  const db = await getDb();
+export async function getOptionalAuth(): Promise<AuthContext | null> {
   const session = await getSession();
+  if (!session) return null;
 
-  if (session) {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, session.userId))
-      .limit(1);
-    if (user) {
-      const [member] = await db
-        .select({ tenantId: organizationMembers.tenantId })
-        .from(organizationMembers)
-        .where(
-          and(
-            eq(organizationMembers.userId, user.id),
-            eq(organizationMembers.tenantId, session.tenantId),
-          ),
-        )
-        .limit(1);
-      const tenantId = member?.tenantId ?? user.tenantId;
-      const [tenant] = await db
-        .select()
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
-      if (tenant) return { tenant, user, authenticated: true };
-    }
+  const db = await getDb();
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (!user) return null;
+
+  // Revocation: any session issued at or before `sessions_revoked_at` is dead
+  // (password change, "sign out everywhere", forced revocation).
+  if (
+    user.sessionsRevokedAt &&
+    (typeof session.iat !== "number" || session.iat <= user.sessionsRevokedAt.getTime())
+  ) {
+    return null;
   }
 
-  const [tenant] = await db.select().from(tenants).orderBy(asc(tenants.createdAt)).limit(1);
-  if (!tenant) {
-    throw new Error("No workspace found. Run `npm run db:migrate && npm run seed` first.");
-  }
-  const [user] = await db.select().from(users).orderBy(asc(users.createdAt)).limit(1);
-  return { tenant, user, authenticated: false };
+  const [member] = await db
+    .select({ tenantId: organizationMembers.tenantId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, user.id),
+        eq(organizationMembers.tenantId, session.tenantId),
+      ),
+    )
+    .limit(1);
+  if (!member) return null;
+
+  const [tenant] = await db
+    .select()
+    .from(tenants)
+    .where(eq(tenants.id, member.tenantId))
+    .limit(1);
+  if (!tenant) return null;
+
+  return { tenant, user, authenticated: true };
+}
+
+/**
+ * Page/action guard: returns the authenticated context or redirects to the
+ * public welcome screen. Use this from anything that renders or mutates
+ * tenant-scoped data.
+ */
+export async function getActiveTenant(): Promise<AuthContext> {
+  const ctx = await getOptionalAuth();
+  if (!ctx) redirect("/welcome");
+  return ctx;
 }

@@ -1,213 +1,178 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, gte, ilike, ne, or, sql } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getOptionalAuth } from "@/lib/tenant";
+import { llmStatus } from "@/lib/llm/status";
+import { AnthropicError } from "@/lib/llm";
+import { runAsk, unavailableResponse } from "@/lib/ask/pipeline";
+import { checkAndIncrement } from "@/lib/ask/rate-limit";
 import {
-  commercialSignals,
-  organizations,
-  people,
-  trialChanges,
-  trials,
-} from "@/db/schema";
-import { getActiveTenant } from "@/lib/tenant";
-import { getUserPrefs, RANGE_MS } from "@/lib/user-prefs";
-import { getRecommendations } from "@/lib/recommendations/engine";
+  listConversations,
+  loadConversation,
+  recordTurn,
+} from "@/lib/ask/conversations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-interface AskCard {
-  kind: string;
-  title: string;
-  subtitle?: string;
-  why?: string[];
-  actions: { label: string; href: string }[];
-}
+const ASK_LIMIT_PER_MIN = 20;
+const ASK_TENANT_LIMIT_PER_MIN = 120;
 
-/**
- * Ask newwin — deterministic, context-aware. Resolves entity context from the
- * caller's path, detects a coarse intent, and returns actionable cards.
- */
+/** POST — ask a question. */
 export async function POST(req: Request) {
-  const { q = "", path = "/" } = (await req.json().catch(() => ({}))) as {
+  const auth = await getOptionalAuth();
+  if (!auth) {
+    return NextResponse.json(
+      { code: "unauthenticated", error: "Your session has expired. Please sign in again." },
+      { status: 401 },
+    );
+  }
+  const { tenant, user } = auth;
+
+  let body: {
     q?: string;
     path?: string;
+    conversationId?: string;
+    previousCards?: { title: string; href: string }[];
   };
-  const query = String(q).trim();
-  if (!query) return NextResponse.json({ answer: "Ask me anything about your territory.", cards: [] });
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ code: "bad_request", error: "Invalid JSON body." }, { status: 400 });
+  }
 
-  const { tenant, user } = await getActiveTenant();
-  const db = await getDb();
-  const lower = query.toLowerCase();
+  const query = String(body.q ?? "").trim().slice(0, 1000);
+  if (!query) {
+    return NextResponse.json(
+      { code: "empty", error: "Ask a question — a company, an NCT id, a biomarker, or what changed this week." },
+      { status: 400 },
+    );
+  }
 
-  // ── page context ─────────────────────────────────────────────────────────
-  let contextOrg: { id: string; name: string } | null = null;
-  let contextTrial: string | null = null;
-  const acctMatch = /\/accounts\/([0-9a-f-]{36})/.exec(path ?? "");
-  const trialMatch = /\/trials\/(NCT\d{8})/i.exec(path ?? "");
-  if (acctMatch) {
+  // Shared, cross-instance rate limits (per user + per workspace).
+  const [byUser, byTenant] = await Promise.all([
+    checkAndIncrement(`ask:user:${user.id}`, ASK_LIMIT_PER_MIN, 60_000),
+    checkAndIncrement(`ask:tenant:${tenant.id}`, ASK_TENANT_LIMIT_PER_MIN, 60_000),
+  ]);
+  if (!byUser.ok || !byTenant.ok) {
+    const r = !byUser.ok ? byUser : byTenant;
+    return NextResponse.json(
+      { code: "rate_limited", error: "You're asking a lot, fast. Try again in a minute.", resetAt: r.resetAt },
+      { status: 429, headers: { "retry-after": "60" } },
+    );
+  }
+
+  const status = llmStatus();
+
+  // Page context (never overrides an explicit question).
+  const path = String(body.path ?? "/");
+  const acct = /\/accounts\/([0-9a-f-]{36})/.exec(path);
+  const trial = /\/trials\/(NCT\d{8})/i.exec(path);
+  let contextCompany: { id: string; name: string } | null = null;
+  if (acct) {
+    const { getDb } = await import("@/db");
+    const { organizations } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    const db = await getDb();
     const [o] = await db
       .select({ id: organizations.id, name: organizations.canonicalName })
       .from(organizations)
-      .where(eq(organizations.id, acctMatch[1]))
+      .where(and(eq(organizations.id, acct[1]), eq(organizations.tenantId, tenant.id)))
       .limit(1);
-    if (o) contextOrg = o;
+    if (o) contextCompany = o;
   }
-  if (trialMatch) contextTrial = trialMatch[1].toUpperCase();
 
-  const cards: AskCard[] = [];
-  let answer = "";
+  // Prior turns for follow-ups ("only phase 2", "the second result").
+  let history: { role: "user" | "assistant"; content: string }[] = [];
+  if (body.conversationId) {
+    const turns = await loadConversation(body.conversationId, tenant.id, user.id);
+    if (turns === null) {
+      // Not the caller's conversation — ignore it, start fresh.
+      body.conversationId = undefined;
+    } else {
+      history = turns.map((t) => ({ role: t.role, content: t.content }));
+    }
+  }
 
-  // ── intent: what should I focus on / what changed ───────────────────────
-  if (/focus|what should i (do|look)|priorit|today/.test(lower) || /what changed|overnight|this week/.test(lower)) {
-    const prefs = await getUserPrefs(user.id);
-    const range = /week/.test(lower) ? "7d" : prefs.homeRange;
-    const recs = await getRecommendations({
+  const ctlAbort = new AbortController();
+  req.signal?.addEventListener("abort", () => ctlAbort.abort(), { once: true });
+
+  try {
+    const response = await runAsk({
+      query,
+      ctx: { tenantId: tenant.id, userId: user.id },
+      page: {
+        contextCompany,
+        contextNctId: trial ? trial[1].toUpperCase() : null,
+        history,
+      },
+      previousCards: Array.isArray(body.previousCards) ? body.previousCards.slice(0, 12) : undefined,
+      conversationId: body.conversationId ?? null,
+      signal: ctlAbort.signal,
+    });
+
+    // Persist the turn (auth already checked; recordTurn re-verifies ownership).
+    const conversationId = await recordTurn({
       tenantId: tenant.id,
       userId: user.id,
-      prefs,
-      sinceMs: RANGE_MS[range as keyof typeof RANGE_MS] ?? RANGE_MS["24h"],
-      limit: 4,
+      conversationId: body.conversationId ?? null,
+      question: query,
+      response,
     });
-    answer =
-      recs.length > 0
-        ? `Here's what I'd work through first (${range}).`
-        : "Nothing crossed the threshold in that window. The feed is quiet.";
-    for (const r of recs) {
-      cards.push({
-        kind: r.type.replace("_", " "),
-        title: r.title,
-        subtitle: r.reason,
-        why: r.why,
-        actions: [{ label: r.action.label, href: r.action.href }],
-      });
-    }
-    return NextResponse.json({ answer, cards });
-  }
 
-  // ── intent: who should I contact ───────────────────────────────────────
-  if (/who (should i|do i|to) (contact|reach|email)|contact at|reach out/.test(lower)) {
-    const orgName = contextOrg?.name ?? extractCompany(query);
-    let rows: { id: string; name: string; title: string | null; fn: string; orgId: string | null; orgName: string | null }[] = [];
-    if (orgName || contextOrg) {
-      rows = await db
-        .select({
-          id: people.id,
-          name: people.name,
-          title: people.title,
-          fn: people.function,
-          orgId: people.organizationId,
-          orgName: organizations.canonicalName,
-        })
-        .from(people)
-        .leftJoin(organizations, eq(organizations.id, people.organizationId))
-        .where(
-          and(
-            eq(people.tenantId, tenant.id),
-            contextOrg
-              ? eq(people.organizationId, contextOrg.id)
-              : ilike(organizations.canonicalName, `%${orgName}%`),
-          ),
-        )
-        .orderBy(desc(people.relevanceScore))
-        .limit(3);
-    }
-    if (rows.length === 0) {
-      answer = contextOrg
-        ? `No stakeholders are mapped for ${contextOrg.name} yet. Open the account to add them.`
-        : "No matching contacts are mapped yet. Contact intelligence fills in as publications and trial records are ingested.";
-      if (contextOrg) cards.push({ kind: "account", title: contextOrg.name, actions: [{ label: "Open account", href: `/accounts/${contextOrg.id}` }] });
-    } else {
-      answer = `Best contacts${contextOrg ? ` at ${contextOrg.name}` : ""}, ranked by relevance:`;
-      for (const p of rows) {
-        cards.push({
-          kind: "recommended contact",
-          title: p.name,
-          subtitle: [p.title, p.orgName].filter(Boolean).join(" · "),
-          why: [`Function: ${p.fn.replace(/_/g, " ")}`, "Ranked on functional relevance + evidence"],
-          actions: [
-            { label: "Draft outreach", href: `/outreach?person=${p.id}` },
-            ...(p.orgId ? [{ label: "Open account", href: `/accounts/${p.orgId}` }] : []),
-          ],
-        });
+    return NextResponse.json({ ...response, conversationId });
+  } catch (err) {
+    if (err instanceof AnthropicError) {
+      if (err.status === 499) {
+        return NextResponse.json({ code: "cancelled", error: "Request cancelled." }, { status: 499 });
       }
-    }
-    return NextResponse.json({ answer, cards });
-  }
-
-  // ── intent: overdue / show outreach ───────────────────────────────────
-  if (/overdue|follow[- ]?up|outreach/.test(lower)) {
-    answer = "Your outreach queue — recommended, drafts and follow-ups.";
-    cards.push({ kind: "outreach", title: "Open the outreach queue", actions: [{ label: "Go to Outreach", href: "/outreach" }] });
-    return NextResponse.json({ answer, cards });
-  }
-
-  // ── intent: trials changed ───────────────────────────────────────────
-  if (/trial.*(chang|amend|updat)|what trials/.test(lower)) {
-    const rows = await db
-      .select({ c: trialChanges, nct: trials.nctId, title: trials.title })
-      .from(trialChanges)
-      .leftJoin(trials, eq(trials.id, trialChanges.trialId))
-      .where(and(eq(trialChanges.tenantId, tenant.id), gte(trialChanges.detectedAt, new Date(Date.now() - 7 * 864e5))))
-      .orderBy(desc(trialChanges.commercialRelevance))
-      .limit(5);
-    answer = rows.length ? "Trial changes in the last 7 days:" : "No trial changes recorded in the last 7 days.";
-    for (const r of rows) {
-      if (!r.nct) continue;
-      cards.push({
-        kind: "trial change",
-        title: r.title ?? r.nct,
-        subtitle: r.c.summary,
-        actions: [{ label: "Open trial", href: `/trials/${r.nct}` }],
+      if (err.status === 401 || err.status === 403) {
+        return NextResponse.json(
+          unavailableResponse("the AI provider rejected the API key"),
+          { status: 200 },
+        );
+      }
+      if (err.status === 429) {
+        return NextResponse.json(
+          { code: "ai_busy", error: "The AI provider is rate-limiting us. Try again shortly." },
+          { status: 429 },
+        );
+      }
+      // Provider/network failure — degrade to unavailable, not a crash.
+      return NextResponse.json(unavailableResponse("the AI provider is temporarily unreachable"), {
+        status: 200,
       });
     }
-    return NextResponse.json({ answer, cards });
+    console.error("[ask] pipeline error", (err as Error)?.message, {
+      aiConfigured: status.configured,
+    });
+    return NextResponse.json(
+      { code: "server_error", error: "Ask newwin hit an unexpected error. Database search still works." },
+      { status: 500 },
+    );
   }
-
-  // ── fallback: keyword search across signals, accounts, trials ──────────
-  const term = `%${query.replace(/[%_]/g, "")}%`;
-  const sigs = await db
-    .select({
-      s: commercialSignals,
-      orgName: organizations.canonicalName,
-      nct: trials.nctId,
-    })
-    .from(commercialSignals)
-    .leftJoin(organizations, eq(organizations.id, commercialSignals.organizationId))
-    .leftJoin(trials, eq(trials.id, commercialSignals.trialId))
-    .where(
-      and(
-        eq(commercialSignals.tenantId, tenant.id),
-        ne(commercialSignals.status, "dismissed"),
-        or(
-          ilike(commercialSignals.headline, term),
-          ilike(commercialSignals.factSummary, term),
-          ilike(organizations.canonicalName, term),
-        ),
-      ),
-    )
-    .orderBy(desc(commercialSignals.opportunityScore))
-    .limit(4);
-
-  if (sigs.length > 0) {
-    answer = `${sigs.length} signal${sigs.length === 1 ? "" : "s"} match "${query}".`;
-    for (const row of sigs) {
-      cards.push({
-        kind: "signal",
-        title: row.s.headline,
-        subtitle: [row.orgName, `score ${row.s.opportunityScore}`].filter(Boolean).join(" · "),
-        why: [row.s.whyNow ?? ""].filter(Boolean),
-        actions: [
-          { label: "Review", href: row.nct ? `/trials/${row.nct}` : `/intelligence?signal=${row.s.id}` },
-        ],
-      });
-    }
-  } else {
-    answer = `Nothing in the mapped universe matches "${query}" yet. Try a company, pathway or "what should I focus on today?".`;
-  }
-  return NextResponse.json({ answer, cards });
 }
 
-function extractCompany(q: string): string {
-  const m = /(?:at|for|with)\s+([A-Z][A-Za-z0-9&.\- ]{2,40})/.exec(q);
-  return (m?.[1] ?? "").trim();
+/** GET — list conversations, or load one with `?conversationId=`. */
+export async function GET(req: Request) {
+  const auth = await getOptionalAuth();
+  if (!auth) {
+    return NextResponse.json(
+      { code: "unauthenticated", error: "Please sign in again." },
+      { status: 401 },
+    );
+  }
+  const { tenant, user } = auth;
+  const url = new URL(req.url);
+  const conversationId = url.searchParams.get("conversationId");
+
+  if (conversationId) {
+    const turns = await loadConversation(conversationId, tenant.id, user.id);
+    if (turns === null) {
+      return NextResponse.json({ code: "not_found", error: "Conversation not found." }, { status: 404 });
+    }
+    return NextResponse.json({ conversationId, turns });
+  }
+
+  const conversations = await listConversations(tenant.id, user.id);
+  return NextResponse.json({ conversations });
 }
