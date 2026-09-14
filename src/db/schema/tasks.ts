@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { taskCategoryEnum } from "./enums";
 import { organizations } from "./organizations";
+import { people } from "./people";
 import { tenants, users } from "./tenancy";
 
 /**
@@ -36,6 +37,9 @@ export const tasks = pgTable(
       () => organizations.id,
       { onDelete: "set null" },
     ),
+    /** The specific contact this task is about — e.g. a scheduled follow-up.
+     * Nullable: most tasks (research, admin) are not about one person. */
+    personId: uuid("person_id").references(() => people.id, { onDelete: "cascade" }),
     relatedInteractionId: uuid("related_interaction_id"),
     // Provenance + idempotency key, e.g. "outreach_followup". NULL for manual tasks.
     source: text("source"),
@@ -48,6 +52,7 @@ export const tasks = pgTable(
     index("tasks_category_idx").on(t.category),
     index("tasks_done_idx").on(t.done),
     index("tasks_due_idx").on(t.dueAt),
+    index("tasks_person_idx").on(t.personId),
     uniqueIndex("tasks_dedupe_idx").on(t.tenantId, t.dedupeKey),
   ],
 );
