@@ -81,6 +81,17 @@ const schema = z.object({
   AUTH_SECRET: trimmed("newwin-dev-session-secret-change-me").transform(
     (v) => v || "newwin-dev-session-secret-change-me",
   ),
+
+  // Presentation/demo build: real DB, auth and LLM provider are not wired up
+  // yet. Runs against an in-memory, pre-seeded database with realistic fake
+  // data and an auto-signed-in demo user — see src/lib/demo/. NEVER set this
+  // in an environment with real customer data.
+  DEMO_MODE: z
+    .preprocess(
+      (v) => (typeof v === "string" ? ["1", "true", "yes"].includes(v.trim().toLowerCase()) : false),
+      z.boolean(),
+    )
+    .catch(false),
 });
 
 const raw = {
@@ -96,6 +107,7 @@ const raw = {
   CROSSREF_MAILTO: process.env.CROSSREF_MAILTO,
   CRON_SECRET: process.env.CRON_SECRET,
   AUTH_SECRET: process.env.AUTH_SECRET,
+  DEMO_MODE: process.env.DEMO_MODE,
 };
 
 export const env = schema.parse(raw);

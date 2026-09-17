@@ -3,7 +3,9 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { discoveredContacts, discoveryJobs, organizations } from "@/db/schema";
 import { resolveOrganization } from "@/integrations/clinicaltrials/entities";
+import { env } from "@/lib/env";
 import { anthropic } from "@/lib/llm";
+import { synthesizeDemoExtraction } from "@/lib/demo/discover";
 import { contactDiscoveryCacheKey, getCachedExtraction, putCachedExtraction } from "./cache";
 import { resolveContactEmail } from "./email";
 import { countUseCaseKeywordHits, scoreContact } from "./rank";
@@ -64,8 +66,8 @@ export async function runDiscoveryJob(jobId: string, opts: { forceRefresh?: bool
 
   await db.update(discoveryJobs).set({ status: "running", updatedAt: new Date() }).where(eq(discoveryJobs.id, jobId));
 
-  const client = anthropic();
-  if (!client) {
+  const client = env.DEMO_MODE ? null : anthropic();
+  if (!client && !env.DEMO_MODE) {
     await db
       .update(discoveryJobs)
       .set({ status: "provider_not_configured", error: "Research provider is not configured (ANTHROPIC_API_KEY / LLM_PROVIDER).", updatedAt: new Date() })
@@ -109,7 +111,11 @@ export async function runDiscoveryJob(jobId: string, opts: { forceRefresh?: bool
     let researchRequestId: string | null = null;
     let extractionRequestId: string | null = null;
 
-    if (!extraction) {
+    if (!extraction && env.DEMO_MODE) {
+      // No network call, no LLM — a deterministic, clearly-labelled synthetic
+      // result so Discover "just works" for any typed query in a demo build.
+      extraction = synthesizeDemoExtraction(companyLabel, job.queryText);
+    } else if (!extraction && client) {
       const focus = [companyLabel, job.useCase].filter(Boolean).join(" — ");
       const research = await client.research({
         system:
@@ -162,6 +168,11 @@ export async function runDiscoveryJob(jobId: string, opts: { forceRefresh?: bool
       extraction = extracted;
       extractionRequestId = researchRequestId; // generateObject doesn't currently surface a separate id
       if (cacheKey) void putCachedExtraction(cacheKey, extraction);
+    }
+    if (!extraction) {
+      // Unreachable in practice — the client-configured check above already
+      // returned early otherwise — but keeps this branch honest for TS.
+      throw new Error("No extraction produced and no research provider was available.");
     }
 
     // ── resolve employer domain (persist back onto the org if newly found) ──

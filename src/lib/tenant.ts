@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { organizationMembers, tenants, users } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { env } from "@/lib/env";
+import { DEMO_USER_EMAIL } from "@/lib/demo/constants";
 
 export type AuthContext = {
   tenant: typeof tenants.$inferSelect;
@@ -23,6 +25,18 @@ export type AuthContext = {
  * `user.tenantId`.
  */
 export async function getOptionalAuth(): Promise<AuthContext | null> {
+  // Demo build: no real login. Every visitor is the seeded demo user — see
+  // src/lib/demo/seed.ts. This never consults a session cookie, so it is
+  // unaffected by AUTH_SECRET being unset/default in this environment.
+  if (env.DEMO_MODE) {
+    const db = await getDb();
+    const [demoUser] = await db.select().from(users).where(eq(users.email, DEMO_USER_EMAIL)).limit(1);
+    if (!demoUser) return null; // seeding hasn't run yet — should not happen once getDb() resolves
+    const [demoTenant] = await db.select().from(tenants).where(eq(tenants.id, demoUser.tenantId)).limit(1);
+    if (!demoTenant) return null;
+    return { tenant: demoTenant, user: demoUser, authenticated: true };
+  }
+
   const session = await getSession();
   if (!session) return null;
 

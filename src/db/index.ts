@@ -55,6 +55,22 @@ function missingDatabaseUrlError(): Error {
 }
 
 async function createDb(): Promise<DrizzleDb> {
+  if (env.DEMO_MODE) {
+    // A presentation/demo build: no real database, no real credentials. Runs
+    // an in-memory (never touches disk) PGlite instance — safe even on a
+    // read-only managed filesystem — migrated fresh and seeded with entirely
+    // fictional data. See src/lib/demo/seed.ts.
+    const { drizzle } = await import("drizzle-orm/pglite");
+    const { PGlite } = await import("@electric-sql/pglite");
+    const { migrate } = await import("drizzle-orm/pglite/migrator");
+    const client = new PGlite(); // no dataDir → in-memory only
+    const db = drizzle(client, { schema });
+    await migrate(db, { migrationsFolder: "./drizzle" });
+    const { seedDemoData } = await import("@/lib/demo/seed");
+    await seedDemoData(db);
+    return db;
+  }
+
   if (usingPglite) {
     if (MANAGED_HOST) throw missingDatabaseUrlError();
 

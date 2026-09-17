@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { trials } from "@/db/schema";
 import { getActiveTenant } from "@/lib/tenant";
+import { env } from "@/lib/env";
 import { runSearch } from "@/lib/search/search";
 import { bootstrapOncologyTrials } from "@/lib/search/search-trials";
 import type { TrialPhase, TrialSearchResult, TrialStatus } from "@/lib/search/types";
@@ -185,7 +186,9 @@ export default async function TrialsPage({
   let banner: string | null = null;
 
   if (q) {
-    const search = await runSearch(q, { tenantId: tenant.id, live: true, persist: true, trialLimit: 40 });
+    // Demo mode never reaches an external network — search only the seeded
+    // local trials, never live ClinicalTrials.gov.
+    const search = await runSearch(q, { tenantId: tenant.id, live: !env.DEMO_MODE, persist: !env.DEMO_MODE, trialLimit: 40 });
     rows = search.trials.map(resultToBrowseRow);
     const live = rows.filter((r) => r.source === "clinicaltrials.gov").length;
     banner =
@@ -194,7 +197,7 @@ export default async function TrialsPage({
       (search.meta.ctgovError ? ` · ClinicalTrials.gov error: ${search.meta.ctgovError}` : "");
   } else {
     rows = await browseLocal(tenant.id, { status, phase, sort, limit: 200 });
-    if (rows.length === 0) {
+    if (rows.length === 0 && !env.DEMO_MODE) {
       const boot = await bootstrapOncologyTrials(tenant.id, { fetch: 40, persist: 20 });
       rows = boot.results.map(resultToBrowseRow);
       banner = boot.results.length
