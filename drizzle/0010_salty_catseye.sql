@@ -1,0 +1,1 @@
+ALTER TYPE "public"."discovery_job_status" ADD VALUE 'provider_not_configured';

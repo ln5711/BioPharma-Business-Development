@@ -121,6 +121,13 @@ export const changeSeverityEnum = pgEnum("change_severity", [
 // ─── Signals ────────────────────────────────────────────────────────────────
 export const signalTypeEnum = pgEnum("signal_type", [
   "NEW_TRIAL",
+  /**
+   * A trial newwin only started tracking today — first posted on
+   * ClinicalTrials.gov outside the "new trial" recency window (historical
+   * import via search or a watchlist's first pass). NOT a newly announced
+   * trial; excluded from "new / changed" feeds.
+   */
+  "TRIAL_MONITORING_STARTED",
   "TRIAL_PHASE_CHANGE",
   "TRIAL_STATUS_CHANGE",
   "TRIAL_ENROLLMENT_CHANGE",
@@ -340,4 +347,61 @@ export const taskCategoryEnum = pgEnum("task_category", [
   "follow_up",
   "meeting_prep",
   "admin",
+]);
+
+// ─── Contact discovery / outreach tracker ──────────────────────────────────
+
+/** How a contact's current email address was obtained. Never conflated with
+ * whether it actually delivers — see emailDeliverabilityEnum. */
+export const emailProvenanceEnum = pgEnum("email_provenance", [
+  "publicly_sourced",
+  "inferred_pattern",
+  "user_supplied",
+  "not_found",
+]);
+
+/** Whether the address has actually been checked against a mail server /
+ * verification provider. `not_checked` is the honest default — a published or
+ * inferred address is never presented as verified just because it exists. */
+export const emailDeliverabilityEnum = pgEnum("email_deliverability", [
+  "not_checked",
+  "verified",
+  "undeliverable",
+  "unknown_catch_all",
+]);
+
+/** Outreach pipeline state — separate from relationshipHealthEnum, which
+ * tracks the longer-run relationship rather than where this specific
+ * touchpoint sequence stands. */
+export const outreachStatusEnum = pgEnum("outreach_status", [
+  "new",
+  "researching",
+  "ready_to_contact",
+  "contacted",
+  "follow_up_due",
+  "replied",
+  "meeting_scheduled",
+  "qualified_opportunity",
+  "not_interested",
+  "do_not_contact",
+]);
+
+/** How confidently a discovered contact ties to the opportunity that surfaced
+ * them — never inflated to "owns the program" from employment alone. */
+export const contactRelevanceLabelEnum = pgEnum("contact_relevance_label", [
+  "direct_program_evidence",
+  "relevant_function_unconfirmed",
+  "potential_introducer",
+]);
+
+export const discoveryJobStatusEnum = pgEnum("discovery_job_status", [
+  "queued",
+  "running",
+  "partial",
+  "complete",
+  "failed",
+  // A missing/misconfigured research provider (no ANTHROPIC_API_KEY) is a
+  // distinct, expected condition — never surfaced to the user as an
+  // undifferentiated "failed" search, and never a reason to fabricate results.
+  "provider_not_configured",
 ]);

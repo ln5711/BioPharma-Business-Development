@@ -1,20 +1,21 @@
 import "server-only";
-import { createHash } from "node:crypto";
-import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   commercialSignals,
   interactions,
   organizations,
   recommendationFeedback,
+  signalSources,
   tasks,
   trialChanges,
   trials,
   workspaceItems,
   workspaces,
 } from "@/db/schema";
+import { inArray } from "drizzle-orm";
 import { signalMeta } from "@/lib/signals/taxonomy";
-import { priorityKeywords, type UserPrefs } from "@/lib/user-prefs";
+import { matchesPriority, priorityMatcher, type UserPrefs } from "@/lib/user-prefs";
 
 export type RecType =
   | "signal"
@@ -25,6 +26,11 @@ export type RecType =
   | "task";
 
 export interface Recommendation {
+  /**
+   * Stable, human-readable identity: `"<entityType>:<entityId>"`. Used both as
+   * the dedupe key (one card per underlying entity) AND the feedback key, so
+   * dismiss/defer/complete is deterministic and survives re-ranking. NOT a hash.
+   */
   key: string;
   type: RecType;
   title: string;
@@ -36,12 +42,14 @@ export interface Recommendation {
   action: { label: string; href: string };
 }
 
-const keyOf = (parts: string[]) =>
-  createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 16);
-
 function daysAgo(d: Date | string | null): number | null {
   if (!d) return null;
   return Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
+}
+
+function fmtDate(d: Date | string | null): string | null {
+  if (!d) return null;
+  return new Date(d).toISOString().slice(0, 10);
 }
 
 /**
@@ -59,7 +67,10 @@ export async function getRecommendations(opts: {
   const db = await getDb();
   const { tenantId, userId, prefs, sinceMs } = opts;
   const since = new Date(Date.now() - sinceMs);
-  const activePriorities = prefs.priorities.filter((p) => !p.paused);
+  // Paused priorities do not match anything.
+  const activePriorities = prefs.priorities
+    .filter((p) => !p.paused)
+    .map((p) => ({ priority: p, matcher: priorityMatcher(p) }));
   const out: Recommendation[] = [];
 
   // ── suppressed / deferred keys ─────────────────────────────────────────────
@@ -100,10 +111,38 @@ export async function getRecommendations(opts: {
     .orderBy(desc(commercialSignals.opportunityScore), desc(commercialSignals.detectedAt))
     .limit(60);
 
-  const usedOrgs = new Set<string>();
+  // Primary source per signal (for evidence + link in the explanation).
+  const sigIds = sigRows.map((r) => r.s.id);
+  const sourceBySignal = new Map<
+    string,
+    { title: string | null; url: string | null; publishedAt: Date | null; type: string }
+  >();
+  if (sigIds.length) {
+    const srcRows = await db
+      .select()
+      .from(signalSources)
+      .where(inArray(signalSources.signalId, sigIds))
+      .orderBy(desc(signalSources.publishedAt));
+    for (const s of srcRows) {
+      if (!sourceBySignal.has(s.signalId)) {
+        sourceBySignal.set(s.signalId, {
+          title: s.title,
+          url: s.url,
+          publishedAt: s.publishedAt,
+          type: s.sourceType,
+        });
+      }
+    }
+  }
 
-  // 1 — signals matched to an active priority
+  const usedOrgs = new Set<string>();
+  const usedSignals = new Set<string>();
+
+  // 1 — signals: one card per signal, whether it matched a priority or simply
+  // scored highly. Explicit `signal:<id>` key → natural dedupe + stable feedback.
   for (const row of sigRows) {
+    if (usedSignals.has(row.s.id)) continue;
+
     const hay = [
       row.s.headline,
       row.s.factSummary,
@@ -113,14 +152,32 @@ export async function getRecommendations(opts: {
       .join(" ")
       .toLowerCase();
 
-    const matched = activePriorities.find((p) =>
-      priorityKeywords(p).some((k) => k && hay.includes(k)),
-    );
-    if (!matched) continue;
+    const hit = activePriorities.find((p) => matchesPriority(hay, p.matcher));
+    const highScore = (row.s.opportunityScore ?? 0) >= 70;
+    if (!hit && !highScore) continue;
+
+    const key = `signal:${row.s.id}`;
+    if (suppressed.has(key)) continue;
 
     const meta = signalMeta(row.s.signalType);
-    const key = keyOf(["sig", row.s.id, matched.id]);
-    if (suppressed.has(key)) continue;
+    const src = sourceBySignal.get(row.s.id);
+    const sourceLabel = src
+      ? `${src.title ?? src.type}${
+          src.publishedAt ? ` (${fmtDate(src.publishedAt)})` : ""
+        }`
+      : row.s.sourceDate
+        ? `reported ${fmtDate(row.s.sourceDate)}`
+        : null;
+    const detected = fmtDate(row.s.detectedAt);
+
+    const why = [
+      hit ? `Matches your priority "${hit.priority.text}".` : null,
+      highScore ? `Opportunity score ${row.s.opportunityScore} — above your review threshold.` : null,
+      `${row.orgName ?? "This account"} · ${meta.label.toLowerCase()}${
+        sourceLabel ? ` · source: ${sourceLabel}` : ""
+      }${detected ? ` · detected ${detected}` : ""}`,
+      row.s.whyNow ?? row.s.whyItMatters ?? "",
+    ].filter((s): s is string => Boolean(s));
 
     out.push({
       key,
@@ -129,49 +186,21 @@ export async function getRecommendations(opts: {
       reason:
         row.s.whyItMatters ??
         row.s.commercialInterpretation ??
-        "A development that maps to one of your priorities.",
+        (hit ? "A development that maps to one of your priorities." : "High opportunity score."),
       nextStep:
         row.s.recommendedAction ??
-        `Review the signal and identify the ${meta.personas[0]?.replace(/_/g, " ") ?? "right"} contact.`,
-      why: [
-        `"${matched.text}" is one of your priorities.`,
-        `${row.orgName ?? "This account"} had a ${meta.label.toLowerCase()} in this window.`,
-        row.s.whyNow ?? "",
-      ].filter(Boolean),
-      score: (row.s.opportunityScore ?? 40) + 12,
+        `Review the signal and identify the ${
+          meta.personas[0]?.replace(/_/g, " ") ?? "right"
+        } contact.`,
+      why,
+      score: (row.s.opportunityScore ?? 40) + (hit ? 12 : 4),
       entityLabel: row.orgName,
       action: {
         label: "Review signal",
         href: row.nct ? `/trials/${row.nct}` : `/intelligence?signal=${row.s.id}`,
       },
     });
-    if (row.orgId) usedOrgs.add(row.orgId);
-  }
-
-  // 2 — high-priority signals regardless of priority match
-  for (const row of sigRows) {
-    if ((row.s.opportunityScore ?? 0) < 70) continue;
-    const key = keyOf(["sig", row.s.id, "hp"]);
-    if (suppressed.has(key)) continue;
-    if (out.some((r) => r.key.startsWith(keyOf(["sig", row.s.id, ""]).slice(0, 8)))) {
-      // rough: skip if this signal already surfaced via a priority
-    }
-    if (out.find((r) => r.action.href.includes(row.s.id))) continue;
-    const meta = signalMeta(row.s.signalType);
-    out.push({
-      key,
-      type: "signal",
-      title: `${meta.label} — ${row.orgName ?? "Unresolved sponsor"}`,
-      reason: row.s.whyItMatters ?? row.s.commercialInterpretation ?? "High opportunity score.",
-      nextStep: row.s.recommendedAction ?? "Map stakeholders and draft evidence-based outreach.",
-      why: [
-        `Opportunity score ${row.s.opportunityScore} — above your review threshold.`,
-        row.s.whyNow ?? "",
-      ].filter(Boolean),
-      score: (row.s.opportunityScore ?? 70) + 4,
-      entityLabel: row.orgName,
-      action: { label: "Review signal", href: row.nct ? `/trials/${row.nct}` : `/intelligence?signal=${row.s.id}` },
-    });
+    usedSignals.add(row.s.id);
     if (row.orgId) usedOrgs.add(row.orgId);
   }
 
@@ -200,7 +229,7 @@ export async function getRecommendations(opts: {
 
   for (const a of accountRows) {
     if (usedOrgs.has(a.id)) continue;
-    const key = keyOf(["acct", a.id]);
+    const key = `account:${a.id}`;
     if (suppressed.has(key)) continue;
     const gap = daysAgo(a.lastContact);
     out.push({
@@ -230,7 +259,7 @@ export async function getRecommendations(opts: {
     .where(and(eq(tasks.tenantId, tenantId), eq(tasks.userId, userId), eq(tasks.done, false)))
     .limit(10);
   for (const t of followTasks.filter((t) => t.category === "follow_up")) {
-    const key = keyOf(["task", t.id]);
+    const key = `task:${t.id}`;
     if (suppressed.has(key)) continue;
     out.push({
       key,
@@ -265,7 +294,7 @@ export async function getRecommendations(opts: {
     .limit(5);
   for (const { w, total, done } of wsRows) {
     if (total > 0 && done >= total) continue;
-    const key = keyOf(["ws", w.id]);
+    const key = `workspace:${w.id}`;
     if (suppressed.has(key)) continue;
     out.push({
       key,
@@ -293,7 +322,7 @@ export async function getRecommendations(opts: {
     .limit(4);
   for (const { c, nct, title } of changeRows) {
     if (c.severity !== "high" && c.commercialRelevance < 70) continue;
-    const key = keyOf(["chg", c.id]);
+    const key = `trialchange:${c.id}`;
     if (suppressed.has(key) || !nct) continue;
     out.push({
       key,
@@ -308,15 +337,21 @@ export async function getRecommendations(opts: {
     });
   }
 
-  // rank, dedupe by title, cap
-  const seen = new Set<string>();
-  return out
+  // Rank, then dedupe by the explicit entity key (`<type>:<id>`) — never by a
+  // hash prefix or a rendered title. Keep the highest-scoring card per entity.
+  const byKey = new Map<string, Recommendation>();
+  for (const r of out.sort((a, b) => b.score - a.score)) {
+    if (!byKey.has(r.key)) byKey.set(r.key, r);
+  }
+  return [...byKey.values()]
     .sort((a, b) => b.score - a.score)
-    .filter((r) => {
-      if (seen.has(r.title)) return false;
-      seen.add(r.title);
-      return true;
-    })
     .slice(0, opts.limit ?? 6)
-    .map((r, i) => ({ ...r, score: Math.max(1, Math.min(100, Math.round(r.score))), rank: i + 1 }) as Recommendation);
+    .map(
+      (r, i) =>
+        ({
+          ...r,
+          score: Math.max(1, Math.min(100, Math.round(r.score))),
+          rank: i + 1,
+        }) as Recommendation,
+    );
 }

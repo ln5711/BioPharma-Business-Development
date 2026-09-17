@@ -11,7 +11,8 @@ type Mode = "create" | "signin";
 
 export function WelcomeFlow() {
   const [phase, setPhase] = useState<Phase>("intro");
-  const [mode, setMode] = useState<Mode>("create");
+  // Signed-out visitors land on Sign in; new users switch to Create.
+  const [mode, setMode] = useState<Mode>("signin");
 
   useEffect(() => {
     if (phase !== "intro") return;

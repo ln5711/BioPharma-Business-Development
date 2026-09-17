@@ -34,6 +34,24 @@ export function formatRelativeDays(from: Date | string | null | undefined): stri
   return `${Math.floor(days / 365)} yr ago`;
 }
 
+/**
+ * Absolute calendar date, e.g. "Aug 21, 2026". Formatted in UTC so a
+ * ClinicalTrials.gov date ("2026-08-21", stored midnight-UTC) never renders as
+ * the day before in a negative-offset timezone.
+ */
+export function formatDate(from: Date | string | null | undefined): string {
+  if (!from) return "—";
+  const d = typeof from === "string" ? new Date(from) : from;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+/** "Aug 21, 2026 · 20 days ago" — absolute first, then relative for context. */
+export function formatDateWithRelative(from: Date | string | null | undefined): string {
+  if (!from) return "—";
+  return `${formatDate(from)} · ${formatRelativeDays(from)}`;
+}
+
 export function truncate(text: string, max = 160): string {
   if (text.length <= max) return text;
   return text.slice(0, max - 1).trimEnd() + "…";

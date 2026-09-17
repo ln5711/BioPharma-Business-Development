@@ -39,6 +39,9 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("member"), // member | manager | admin | owner
   passwordHash: text("password_hash"), // scrypt: salt:hash (null for seeded/demo users)
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  // Any session issued at or before this instant is rejected. Bumped on
+  // password change / "sign out everywhere" / forced revocation.
+  sessionsRevokedAt: timestamp("sessions_revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -89,6 +92,7 @@ export const userPreferences = pgTable(
     biomarkers: jsonb("biomarkers").$type<string[]>().notNull().default([]),
     pathways: jsonb("pathways").$type<string[]>().notNull().default([]),
     homeRange: text("home_range").notNull().default("24h"), // 24h | 7d | 30d
+    theme: text("theme").notNull().default("system"), // system | light | dark
     onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

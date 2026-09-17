@@ -37,6 +37,7 @@ const EXEC = "executive";
 
 export const SIGNAL_TAXONOMY: Record<string, SignalTypeMeta> = {
   NEW_TRIAL: { category: "clinical_trial", urgency: "high", personas: [CD, TM, CO, PM], label: "New trial" },
+  TRIAL_MONITORING_STARTED: { category: "clinical_trial", urgency: "low", personas: [CD, TM], label: "Added to monitoring" },
   TRIAL_PHASE_CHANGE: { category: "clinical_trial", urgency: "high", personas: [TM, CD, PM], label: "Phase change" },
   TRIAL_STATUS_CHANGE: { category: "clinical_trial", urgency: "medium", personas: [CD, CO], label: "Status change" },
   TRIAL_ENROLLMENT_CHANGE: { category: "clinical_trial", urgency: "medium", personas: [CO, CD], label: "Enrollment change" },
@@ -93,6 +94,14 @@ export function signalMeta(type: string): SignalTypeMeta {
     }
   );
 }
+
+/**
+ * Bookkeeping signals that record newwin STARTING to watch something rather
+ * than a real-world development. They must never appear in "new trials today",
+ * "what changed today/this week", the daily intelligence feed, or the Home
+ * signal counts. They stay queryable for landscape/audit views only.
+ */
+export const LANDSCAPE_ONLY_SIGNALS = new Set(["TRIAL_MONITORING_STARTED"]);
 
 /** Signal types that must NOT drive standard outbound sales outreach (spec §46 / §109). */
 export const SUPPRESSED_OUTREACH_SIGNALS = new Set([

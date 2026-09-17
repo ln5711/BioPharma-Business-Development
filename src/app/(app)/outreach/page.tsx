@@ -1,140 +1,135 @@
 import Link from "next/link";
-import { and, desc, eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { interactions, organizations } from "@/db/schema";
 import { getActiveTenant } from "@/lib/tenant";
-import { getUserPrefs, RANGE_MS } from "@/lib/user-prefs";
-import { getRecommendations } from "@/lib/recommendations/engine";
 import { PageHeader } from "@/components/ui/primitives";
-import { formatRelativeDays } from "@/lib/utils";
-import { logOutreach } from "./actions";
+import { getSavedContacts, savedContactToViewModel, type SavedContactFilters } from "@/lib/contacts/query-contacts";
+import { getTopSignalsForOutreach } from "@/lib/contacts/top-signals";
+import { DiscoverPanel } from "@/components/outreach/discover-panel";
+import { SavedContactsClient } from "@/components/outreach/saved-contacts-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function OutreachPage() {
-  const { tenant, user } = await getActiveTenant();
-  const db = await getDb();
-  const prefs = await getUserPrefs(user.id);
+type Tab = "discover" | "saved" | "favorites" | "followups";
+const TABS: { key: Tab; label: string }[] = [
+  { key: "discover", label: "Discover contacts" },
+  { key: "saved", label: "Saved contacts" },
+  { key: "favorites", label: "Favorites" },
+  { key: "followups", label: "Follow-ups" },
+];
 
-  const [recs, logged] = await Promise.all([
-    getRecommendations({
-      tenantId: tenant.id,
-      userId: user.id,
-      prefs,
-      sinceMs: RANGE_MS["7d"],
-      limit: 8,
-    }),
-    db
-      .select({ i: interactions, org: organizations.canonicalName })
-      .from(interactions)
-      .leftJoin(organizations, eq(organizations.id, interactions.organizationId))
-      .where(and(eq(interactions.tenantId, tenant.id), eq(interactions.userId, user.id)))
-      .orderBy(desc(interactions.occurredAt))
-      .limit(30),
-  ]);
-
-  const outreachRecs = recs.filter((r) => r.type === "signal" || r.type === "follow_up" || r.type === "account");
+export default async function OutreachPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const tab = (typeof sp.tab === "string" && TABS.some((t) => t.key === sp.tab) ? sp.tab : "discover") as Tab;
+  const { tenant } = await getActiveTenant();
 
   return (
     <div>
       <PageHeader
-        eyebrow="Composer & log"
+        eyebrow="Outreach"
         title="Outreach"
-        description="Recommended outreach, drafts, what you've logged, and follow-ups — connected back to the signal, account and people that produced each one."
+        description="Signal-driven contact discovery, evidence-backed relevance, professional email discovery, and a persistent tracker — one workspace from a company signal to a logged conversation."
       />
 
-      <section className="mb-9">
-        <SectionLabel>Recommended</SectionLabel>
-        {outreachRecs.length === 0 ? (
-          <p className="mt-3 text-[13px] text-[var(--muted)]">No outreach recommended right now.</p>
-        ) : (
-          <div className="mt-3 flex flex-col gap-2.5">
-            {outreachRecs.map((r) => (
-              <div
-                key={r.key}
-                className="card flex flex-wrap items-center justify-between gap-3 p-4"
-              >
-                <div className="min-w-0">
-                  <div className="text-[14px] text-[var(--fg)]" style={{ fontFamily: "var(--font-serif)" }}>
-                    {r.title}
-                  </div>
-                  <div className="mt-1 max-w-[70ch] text-[12.5px] text-[var(--muted)]">{r.reason}</div>
-                </div>
-                <Link
-                  href={r.action.href}
-                  className="shrink-0 rounded-[9px] px-3.5 py-2 text-[12.5px] font-semibold"
-                  style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }}
-                >
-                  {r.action.label}
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <nav className="mb-8 flex flex-wrap gap-1.5 border-b pb-3" style={{ borderColor: "var(--card-border)" }}>
+        {TABS.map((t) => (
+          <Link
+            key={t.key}
+            href={`/outreach?tab=${t.key}`}
+            className="rounded-[8px] px-3.5 py-2 text-[12.5px] font-medium transition-colors"
+            style={
+              tab === t.key
+                ? { background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }
+                : { color: "var(--muted)" }
+            }
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
 
-      <section className="mb-9">
-        <SectionLabel>Log outreach</SectionLabel>
-        <form action={logOutreach} className="panel-glass mt-3 grid gap-3 p-5 sm:grid-cols-2">
-          <input name="contact" placeholder="Contact name" className={input} />
-          <input name="account" placeholder="Target account (company)" className={input} />
-          <input name="subject" placeholder="Subject" className={`${input} sm:col-span-2`} />
-          <textarea name="body" rows={3} placeholder="Message or note…" className={`${input} sm:col-span-2 resize-none`} />
-          <div className="flex items-center gap-2 sm:col-span-2">
-            <select name="channel" className={input + " max-w-[140px]"} defaultValue="email">
-              <option value="email">Email</option>
-              <option value="call">Call</option>
-              <option value="linkedin">LinkedIn</option>
-            </select>
-            <button
-              type="submit"
-              className="rounded-[10px] px-4 py-2.5 text-[12.5px] font-semibold"
-              style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }}
-            >
-              Log as sent
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section>
-        <SectionLabel>Logged</SectionLabel>
-        {logged.length === 0 ? (
-          <p className="mt-3 text-[13px] text-[var(--muted)]">Nothing logged yet.</p>
-        ) : (
-          <div className="mt-3 flex flex-col">
-            {logged.map(({ i, org }) => (
-              <div
-                key={i.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b py-3"
-                style={{ borderColor: "rgba(150,185,255,.09)" }}
-              >
-                <div className="min-w-0">
-                  <span className="text-[13.5px] text-[var(--fg)]">{i.subject}</span>
-                  {org ? <span className="ml-2 text-[12px] text-[var(--muted)]">{org}</span> : null}
-                </div>
-                <span className="text-[11.5px] text-[var(--faint)]" style={{ fontFamily: "var(--font-mono)" }}>
-                  {i.type.replace(/_/g, " ")} · {formatRelativeDays(i.occurredAt)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      {tab === "discover" ? <DiscoverTab tenantId={tenant.id} /> : null}
+      {tab === "saved" ? <SavedTab tenantId={tenant.id} searchParams={sp} /> : null}
+      {tab === "favorites" ? <FavoritesTab tenantId={tenant.id} /> : null}
+      {tab === "followups" ? <FollowUpsTab tenantId={tenant.id} /> : null}
     </div>
   );
 }
 
-const input =
-  "w-full rounded-[10px] border border-[rgba(150,185,255,.16)] bg-[rgba(10,8,22,.5)] px-3 py-2.5 text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--accent-border)]";
+async function DiscoverTab({ tenantId }: { tenantId: string }) {
+  const topSignals = await getTopSignalsForOutreach(tenantId, 6);
+  return <DiscoverPanel topSignals={topSignals} />;
+}
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+async function SavedTab({
+  tenantId,
+  searchParams,
+}: {
+  tenantId: string;
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
+  const str = (v: string | string[] | undefined) => (typeof v === "string" && v ? v : undefined);
+  const filters: SavedContactFilters = {
+    q: str(searchParams.q),
+    function: str(searchParams.function),
+    seniority: str(searchParams.seniority),
+    emailAvailability: (str(searchParams.email) as SavedContactFilters["emailAvailability"]) ?? "any",
+    outreachStatus: str(searchParams.status),
+  };
+  const rows = await getSavedContacts(tenantId, filters);
+  const models = rows.map(savedContactToViewModel);
+
   return (
-    <h2
-      className="text-[10.5px] uppercase"
-      style={{ letterSpacing: ".22em", color: "#B7BFD8", fontFamily: "var(--font-mono)", fontWeight: 600 }}
-    >
-      {children}
-    </h2>
+    <div>
+      <form className="mb-5 flex flex-wrap items-center gap-2.5" method="get">
+        <input type="hidden" name="tab" value="saved" />
+        <input name="q" defaultValue={filters.q ?? ""} placeholder="Search name, title, company" className={filterInput} style={filterInputStyle} />
+        <select name="function" defaultValue={filters.function ?? ""} className={filterInput} style={filterInputStyle}>
+          <option value="">Any function</option>
+          {["translational_medicine", "biomarker_development", "precision_medicine", "companion_diagnostics", "clinical_development", "clinical_operations", "program_leadership", "external_innovation", "medical_affairs", "business_development", "executive", "other"].map((f) => (
+            <option key={f} value={f}>{f.replace(/_/g, " ")}</option>
+          ))}
+        </select>
+        <select name="seniority" defaultValue={filters.seniority ?? ""} className={filterInput} style={filterInputStyle}>
+          <option value="">Any seniority</option>
+          {["c_suite", "svp", "vp", "head", "director", "senior_manager", "manager", "scientist", "individual_contributor"].map((s) => (
+            <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+          ))}
+        </select>
+        <select name="email" defaultValue={filters.emailAvailability} className={filterInput} style={filterInputStyle}>
+          <option value="any">Any email status</option>
+          <option value="has_email">Has an email</option>
+          <option value="no_email">No email found</option>
+        </select>
+        <select name="status" defaultValue={filters.outreachStatus ?? ""} className={filterInput} style={filterInputStyle}>
+          <option value="">Any status</option>
+          {["new", "researching", "ready_to_contact", "contacted", "follow_up_due", "replied", "meeting_scheduled", "qualified_opportunity", "not_interested", "do_not_contact"].map((s) => (
+            <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+          ))}
+        </select>
+        <button type="submit" className="rounded-[10px] px-4 py-2 text-[12.5px] font-semibold" style={{ background: "var(--accent-btn)", color: "var(--accent-btn-ink)" }}>
+          Filter
+        </button>
+      </form>
+      <SavedContactsClient initialRows={models} filters={filters} emptyLabel="No saved contacts match these filters yet. Discover and add some from the Discover tab." />
+    </div>
   );
 }
+
+async function FavoritesTab({ tenantId }: { tenantId: string }) {
+  const rows = await getSavedContacts(tenantId, { view: "favorites" });
+  const models = rows.map(savedContactToViewModel);
+  return <SavedContactsClient initialRows={models} filters={{ view: "favorites" }} emptyLabel="No favorites yet — star a saved contact to pin them here." />;
+}
+
+async function FollowUpsTab({ tenantId }: { tenantId: string }) {
+  const rows = await getSavedContacts(tenantId, { view: "followups" });
+  const models = rows.map(savedContactToViewModel);
+  return <SavedContactsClient initialRows={models} filters={{ view: "followups" }} emptyLabel="Nothing is due for follow-up. Log outreach with a follow-up date to see it here." />;
+}
+
+const filterInput =
+  "rounded-[10px] border bg-transparent px-3 py-2 text-[12.5px] text-[var(--fg)] outline-none placeholder:text-[var(--faint)]";
+const filterInputStyle = { borderColor: "var(--card-border)" };

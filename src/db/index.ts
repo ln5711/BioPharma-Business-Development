@@ -55,6 +55,22 @@ function missingDatabaseUrlError(): Error {
 }
 
 async function createDb(): Promise<DrizzleDb> {
+  if (env.DEMO_MODE) {
+    // A presentation/demo build: no real database, no real credentials. Runs
+    // an in-memory (never touches disk) PGlite instance — safe even on a
+    // read-only managed filesystem — migrated fresh and seeded with entirely
+    // fictional data. See src/lib/demo/seed.ts.
+    const { drizzle } = await import("drizzle-orm/pglite");
+    const { PGlite } = await import("@electric-sql/pglite");
+    const { migrate } = await import("drizzle-orm/pglite/migrator");
+    const client = new PGlite(); // no dataDir → in-memory only
+    const db = drizzle(client, { schema });
+    await migrate(db, { migrationsFolder: "./drizzle" });
+    const { seedDemoData } = await import("@/lib/demo/seed");
+    await seedDemoData(db);
+    return db;
+  }
+
   if (usingPglite) {
     if (MANAGED_HOST) throw missingDatabaseUrlError();
 
@@ -73,10 +89,23 @@ async function createDb(): Promise<DrizzleDb> {
   const { drizzle } = await import("drizzle-orm/postgres-js");
   const postgres = (await import("postgres")).default;
   const client = postgres(env.DATABASE_URL, { max: 10 });
+  closers.push(() => client.end({ timeout: 5 }));
   return drizzle(client, { schema }) as unknown as DrizzleDb;
 }
 
 const globalForDb = globalThis as unknown as { __db?: Promise<DrizzleDb> };
+const closers: (() => Promise<unknown> | unknown)[] = [];
+
+/**
+ * Close the underlying connection pool. For scripts / tests only — a long-lived
+ * server never calls this. Lets a Node process exit cleanly instead of hanging
+ * on an open pool (and without a `process.exit` that could mask a failure).
+ */
+export async function closeDb(): Promise<void> {
+  const fns = closers.splice(0);
+  globalForDb.__db = undefined;
+  await Promise.allSettled(fns.map((f) => f()));
+}
 
 /**
  * Convenience accessor: `const db = await getDb()`.

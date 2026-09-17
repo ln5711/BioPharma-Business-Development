@@ -15,11 +15,15 @@ export class CtgovClient {
 
   private buildParams(query: CtgovQuery, pageToken?: string): URLSearchParams {
     const p = new URLSearchParams();
+    if (query.nctId) p.set("query.id", query.nctId);
     if (query.terms.length) p.set("query.term", query.terms.join(" OR "));
     if (query.conditions?.length) p.set("query.cond", query.conditions.join(" OR "));
-    const filters: string[] = [];
     if (query.statuses?.length) {
       p.set("filter.overallStatus", query.statuses.join("|"));
+    }
+    const filters: string[] = [...(query.advanced ?? [])];
+    if (query.phases?.length) {
+      filters.push(`AREA[Phase](${query.phases.join(" OR ")})`);
     }
     if (filters.length) p.set("filter.advanced", filters.join(" AND "));
     p.set("pageSize", String(PAGE_SIZE));
