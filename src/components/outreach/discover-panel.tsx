@@ -18,10 +18,10 @@ interface JobState {
 const TERMINAL_STATUSES = new Set(["complete", "failed", "provider_not_configured"]);
 
 const EXAMPLES = [
-  "Find translational medicine leaders at Guardant Health",
-  "Who oversees biomarkers for RMC-6236?",
-  "Find clinical development contacts for KRAS trials",
-  "Find people involved in ctDNA or resistance monitoring at Exact Sciences",
+  "Who oversees biomarkers for daraxonrasib (RMC-6236)?",
+  "Find translational medicine leaders at Mirati Therapeutics",
+  "Find companion diagnostics contacts for KRAS G12C trials",
+  "Find clinical development contacts at Boehringer Ingelheim for BI 1701963",
 ];
 
 export function DiscoverPanel({ topSignals }: { topSignals: TopSignalForOutreach[] }) {

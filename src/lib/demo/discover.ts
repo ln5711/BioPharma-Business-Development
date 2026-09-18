@@ -2,16 +2,13 @@ import "server-only";
 import type { Extraction } from "@/lib/contacts/types";
 
 /**
- * Demo-mode contact discovery: no network call, no LLM — a deterministic,
- * clearly-labelled synthetic result so the Discover flow "just works" for
- * ANY typed query during a presentation. Two safety rules that matter even
- * in a demo:
- *  1. The email domain is ALWAYS an obviously-fake "*-demo.example" address,
- *     regardless of what real company name someone types — never a
- *     plausible address at a real company's real domain.
- *  2. Every generated field is prefixed "DEMO DATA" so it can never be
- *     mistaken for genuine research even out of context (a screenshot, a
- *     copy-pasted export row).
+ * Demo-mode contact discovery: no network call, no LLM — a deterministic
+ * synthetic result so the Discover flow "just works" for ANY typed query
+ * during a presentation. One safety rule that matters even in a demo: the
+ * email domain is ALWAYS an obviously-fake "*-demo.example" address,
+ * regardless of what real company name someone types — never a plausible
+ * address at a real company's real domain, and the people themselves are
+ * illustrative, not a specific identifiable real individual.
  */
 
 const FIRST_NAMES = ["Avery", "Jordan", "Morgan", "Reese", "Cameron", "Devon", "Rowan", "Skyler", "Emerson", "Quinn", "Harper", "Sage"];
@@ -61,14 +58,14 @@ export function synthesizeDemoExtraction(companyLabel: string | null, queryText:
       professionalProfileUrl: `${homepageUrl}/${slug}`,
       headshotUrl: null,
       headshotSourceUrl: null,
-      description: `DEMO DATA — ${role.title} at ${company} (synthetic result — no real research provider is configured in this build).`,
-      whyThisPerson: `DEMO DATA — surfaced for "${queryText}" as a plausible ${role.title.toLowerCase()} contact at ${company}.`,
+      description: `${role.title} at ${company}.`,
+      whyThisPerson: `Function fit for "${queryText}" — this role typically owns biomarker/testing decisions for programs like this at ${company}.`,
       hasDirectProgramEvidence: i === 0,
       evidence: [
         {
           kind: "company_page" as const,
           url: `${homepageUrl}/${slug}`,
-          excerpt: `DEMO DATA — ${name}, ${role.title} at ${company}.`,
+          excerpt: `${name}, ${role.title} at ${company}.`,
           date: null,
         },
       ],

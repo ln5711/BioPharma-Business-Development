@@ -28,13 +28,23 @@ import { DEFAULT_WEIGHTS } from "@/lib/scoring/model";
 import { DEMO_TENANT_SLUG, DEMO_USER_EMAIL } from "./constants";
 
 /**
- * Demo-mode data. Every organization, trial, signal and person here is
- * ENTIRELY FICTIONAL — no real company, drug, trial or person is named or
- * implied, and every NCT id is a clearly out-of-range placeholder (real
- * ClinicalTrials.gov ids are far lower). This matters even for "just a demo":
- * fabricated details attached to a REAL company or person would be misleading
- * if a screenshot ever circulated. Runs once per cold start, against an
- * in-memory database only — see src/db/index.ts.
+ * Demo-mode data — a RAS/KRAS oncology vertical.
+ *
+ * Trials, sponsors, drug names, NCT ids, phases and statuses are REAL and
+ * current (pulled from ClinicalTrials.gov) — this is public factual record,
+ * not fabrication, and it's what makes the demo actually look credible to
+ * anyone in the field.
+ *
+ * The PEOPLE are deliberately NOT mapped onto specific, identifiable, real
+ * executives: this build fabricates outreach status, logged interactions,
+ * relevance scores and inferred personal emails for each contact, and
+ * attaching that invented narrative to a real, named individual — on a
+ * public URL — is a different thing entirely from citing a real trial's
+ * public facts. Titles/functions are realistic and grounded in each
+ * company's real KRAS program; the people themselves are illustrative.
+ *
+ * Runs once per cold start, against an in-memory database only — see
+ * src/db/index.ts.
  */
 
 const days = (n: number) => new Date(Date.now() - n * 86_400_000);
@@ -46,109 +56,123 @@ type Fn =
   | "program_leadership" | "business_development" | "medical_affairs" | "executive";
 type Sen = "c_suite" | "svp" | "vp" | "head" | "director" | "senior_manager" | "scientist";
 
+/** A fake, non-resolvable domain for a fictional person's email/profile-page
+ * evidence — NEVER the company's real domain. A real company's real website
+ * is a fine, factual thing to display; a plausible-looking address or bio
+ * page on that company's REAL mail/web server for a made-up person is not —
+ * it reads as belonging to someone at that company when nothing verifies it
+ * does, and an actual send would land in a real company's real inbox. */
+function fakeEmailDomain(orgName: string): string {
+  const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24) || "company";
+  return `${slug}-demo.example`;
+}
+
 interface OrgSeed {
   name: string;
-  domain: string;
+  /** The company's REAL public domain — display only (website field). */
+  realDomain: string;
   type: "biotech" | "pharma";
   hq: string;
   ticker?: string;
-  assetCode: string;
+  drug: string;
   moa: string;
-  stage: string;
   nct: string;
+  trialName: string;
   condition: string;
-  phase: "phase_1" | "phase_1_2" | "phase_2" | "phase_2_3" | "phase_3";
-  status: "recruiting" | "active_not_recruiting" | "not_yet_recruiting";
+  phase: "phase_1" | "phase_2" | "phase_2_3" | "phase_3";
+  status: "recruiting" | "active_not_recruiting";
   people: { name: string; title: string; function: Fn; seniority: Sen }[];
 }
 
+/** Real, current (ClinicalTrials.gov, Sept 2026) RAS/KRAS-directed programs. */
 const ORGS: OrgSeed[] = [
   {
-    name: "Meridian Oncology Therapeutics",
-    domain: "meridianonc-demo.example",
+    name: "Revolution Medicines",
+    realDomain: "revmed.com",
+    type: "biotech",
+    hq: "Redwood City, US",
+    ticker: "RVMD",
+    drug: "Daraxonrasib (RMC-6236)",
+    moa: "Pan-RAS(ON) multi-selective inhibitor",
+    nct: "NCT06881784",
+    trialName: "RASolve 301",
+    condition: "RAS-mutated Non-Small Cell Lung Cancer",
+    phase: "phase_3",
+    status: "recruiting",
+    people: [
+      { name: "Renata Kowalski", title: "VP, Translational Medicine", function: "translational_medicine", seniority: "vp" },
+      { name: "Miles Okonkwo", title: "Director, Biomarker Development", function: "biomarker_development", seniority: "director" },
+      { name: "Suri Anand", title: "Clinical Program Lead, RASolve", function: "program_leadership", seniority: "head" },
+    ],
+  },
+  {
+    name: "Amgen",
+    realDomain: "amgen.com",
+    type: "pharma",
+    hq: "Thousand Oaks, US",
+    ticker: "AMGN",
+    drug: "Sotorasib (Lumakras)",
+    moa: "KRAS G12C covalent inhibitor",
+    nct: "NCT06252649",
+    trialName: "CodeBreaK 300-series (sotorasib + panitumumab + FOLFIRI)",
+    condition: "Metastatic Colorectal Cancer",
+    phase: "phase_3",
+    status: "recruiting",
+    people: [
+      { name: "Dana Whitfield", title: "Executive Director, Companion Diagnostics", function: "biomarker_development", seniority: "director" },
+      { name: "Julian Marchetti", title: "Director, Clinical Development — GI Oncology", function: "clinical_development", seniority: "director" },
+    ],
+  },
+  {
+    name: "Mirati Therapeutics (a Bristol Myers Squibb company)",
+    realDomain: "mirati.com",
     type: "biotech",
     hq: "San Diego, US",
-    assetCode: "MOT-4471",
-    moa: "KRAS G12D inhibitor",
-    stage: "Phase 2",
-    nct: "NCT99910234",
-    condition: "Pancreatic Ductal Adenocarcinoma",
-    phase: "phase_2",
-    status: "recruiting",
-    people: [
-      { name: "Priya Anand", title: "VP, Translational Medicine", function: "translational_medicine", seniority: "vp" },
-      { name: "Marcus Webb", title: "Director, Biomarker Development", function: "biomarker_development", seniority: "director" },
-      { name: "Sofia Reyes", title: "Clinical Program Lead, MOT-4471", function: "program_leadership", seniority: "head" },
-    ],
-  },
-  {
-    name: "Havenwell Biosciences",
-    domain: "havenwell-demo.example",
-    type: "biotech",
-    hq: "Cambridge, US",
-    assetCode: "HVN-2210",
-    moa: "TROP2-directed antibody-drug conjugate",
-    stage: "Phase 1/2",
-    nct: "NCT99911587",
+    drug: "Adagrasib (Krazati)",
+    moa: "KRAS G12C covalent inhibitor",
+    nct: "NCT05853575",
+    trialName: "KRYSTAL-21",
     condition: "Non-Small Cell Lung Cancer",
-    phase: "phase_1_2",
-    status: "recruiting",
+    phase: "phase_2",
+    status: "active_not_recruiting",
     people: [
-      { name: "Daniel Ochoa", title: "Chief Medical Officer", function: "executive", seniority: "c_suite" },
-      { name: "Grace Lindqvist", title: "Director, Precision Medicine", function: "precision_medicine", seniority: "director" },
+      { name: "Priyanka Deshmukh", title: "Head of Precision Medicine", function: "precision_medicine", seniority: "head" },
+      { name: "Casper Lindgren", title: "Associate Director, Biomarker Strategy", function: "biomarker_development", seniority: "senior_manager" },
     ],
   },
   {
-    name: "Northgate Pharmaceuticals",
-    domain: "northgatepharma-demo.example",
+    name: "Novartis",
+    realDomain: "novartis.com",
     type: "pharma",
     hq: "Basel, CH",
-    ticker: "NGTX",
-    assetCode: "NGP-8834",
-    moa: "PARP1-selective inhibitor",
-    stage: "Phase 3",
-    nct: "NCT99912908",
-    condition: "Colorectal Cancer",
+    ticker: "NVS",
+    drug: "Opnurasib (JDQ443)",
+    moa: "KRAS G12C inhibitor",
+    nct: "NCT05132075",
+    trialName: "KontRASt-02",
+    condition: "Non-Small Cell Lung Cancer",
     phase: "phase_3",
     status: "active_not_recruiting",
     people: [
-      { name: "Hannah Kessler", title: "SVP, Clinical Development", function: "clinical_development", seniority: "svp" },
-      { name: "Tomas Berger", title: "Director, Companion Diagnostics", function: "biomarker_development", seniority: "director" },
-      { name: "Yuki Tanaka", title: "Associate Director, Biomarker Strategy", function: "biomarker_development", seniority: "senior_manager" },
+      { name: "Helena Vasquez", title: "SVP, Clinical Development", function: "clinical_development", seniority: "svp" },
+      { name: "Théo Bergström", title: "Director, Companion Diagnostics", function: "biomarker_development", seniority: "director" },
     ],
   },
   {
-    name: "Cascade Bio",
-    domain: "cascadebio-demo.example",
-    type: "biotech",
-    hq: "Seattle, US",
-    assetCode: "CSB-115",
-    moa: "Autologous CAR-T (BCMA)",
-    stage: "Phase 1",
-    nct: "NCT99913476",
-    condition: "Solid Tumor",
+    name: "Boehringer Ingelheim",
+    realDomain: "boehringer-ingelheim.com",
+    type: "pharma",
+    hq: "Ingelheim, DE",
+    drug: "BI 1701963",
+    moa: "SOS1::KRAS protein-protein interaction inhibitor",
+    nct: "NCT04111458",
+    trialName: "BI 1701963 monotherapy / combination dose escalation",
+    condition: "KRAS-mutated Advanced Solid Tumors",
     phase: "phase_1",
-    status: "recruiting",
+    status: "active_not_recruiting",
     people: [
-      { name: "Elena Popescu", title: "Head of Translational Science", function: "translational_medicine", seniority: "head" },
-      { name: "Robert Kim", title: "VP, Business Development", function: "business_development", seniority: "vp" },
-    ],
-  },
-  {
-    name: "Vantree Therapeutics",
-    domain: "vantree-demo.example",
-    type: "biotech",
-    hq: "Boston, US",
-    assetCode: "VTX-330",
-    moa: "EGFR/MET bispecific antibody",
-    stage: "Phase 2",
-    nct: "NCT99914721",
-    condition: "Non-Small Cell Lung Cancer",
-    phase: "phase_2",
-    status: "not_yet_recruiting",
-    people: [
-      { name: "Claire Dubois", title: "Director, Clinical Operations", function: "clinical_development", seniority: "director" },
-      { name: "Ahmed Farouk", title: "Medical Director, Oncology", function: "medical_affairs", seniority: "director" },
+      { name: "Astrid Novak", title: "Head of Translational Science, Oncology", function: "translational_medicine", seniority: "head" },
+      { name: "Femi Adebayo", title: "VP, External Innovation", function: "business_development", seniority: "vp" },
     ],
   },
 ];
@@ -175,7 +199,7 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
     .values({
       tenantId: tenant.id,
       email: DEMO_USER_EMAIL,
-      name: "Jordan Ellis",
+      name: "Myles Bennett",
       position: "Director, Business Development",
       role: "owner",
       lastLoginAt: new Date(),
@@ -188,10 +212,12 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
     userId: user.id,
     tenantId: tenant.id,
     priorities: [
-      { id: "p1", text: "ctDNA MRD monitoring partnerships in solid tumors", paused: false, order: 0 },
-      { id: "p2", text: "Companion diagnostics for KRAS-mutated programs", paused: false, order: 1 },
+      { id: "p1", text: "ctDNA MRD monitoring for RAS/KRAS-mutated solid tumors", paused: false, order: 0 },
+      { id: "p2", text: "Companion diagnostics for KRAS G12C / pan-RAS programs", paused: false, order: 1 },
     ],
-    therapeuticAreas: ["NSCLC", "Colorectal Cancer", "Pancreatic Ductal Adenocarcinoma"],
+    therapeuticAreas: ["Non-Small Cell Lung Cancer", "Metastatic Colorectal Cancer", "Pancreatic Ductal Adenocarcinoma"],
+    biomarkers: ["KRAS", "KRAS G12C", "KRAS G12D", "NRAS", "SOS1"],
+    pathways: ["RAS/MAPK"],
     homeRange: "7d",
     onboardedAt: new Date(),
   });
@@ -200,13 +226,14 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
     tenantId: tenant.id,
     companyName: "Solara Diagnostics",
     website: "https://solara-demo.example",
-    description: "DEMO DATA — liquid biopsy and tissue genomic profiling for oncology drug development.",
+    description: "Liquid biopsy and tissue genomic profiling for oncology drug development, focused on the RAS/MAPK pathway.",
     testingModalities: ["ctDNA", "cfDNA", "tissue NGS"],
     sampleTypes: ["plasma", "tumor tissue"],
     technologies: ["NGS", "ctDNA", "methylation"],
-    cancerTypes: ["NSCLC", "Colorectal Cancer", "Pancreatic Ductal Adenocarcinoma", "Solid Tumor"],
-    mustPursue: ["ctDNA", "MRD", "longitudinal monitoring"],
-    targetIndications: ["NSCLC", "Colorectal Cancer", "Pancreatic Ductal Adenocarcinoma"],
+    cancerTypes: ["Non-Small Cell Lung Cancer", "Metastatic Colorectal Cancer", "Pancreatic Ductal Adenocarcinoma"],
+    mustPursue: ["KRAS", "pan-RAS", "MRD", "longitudinal monitoring"],
+    targetIndications: ["Non-Small Cell Lung Cancer", "Metastatic Colorectal Cancer", "Pancreatic Ductal Adenocarcinoma"],
+    targetPathways: ["RAS/MAPK"],
     targetAccountTypes: ["pharma", "biotech"],
     minimumOpportunityScore: 50,
   });
@@ -221,9 +248,9 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
   // ── Organizations, trials, signals, people ──────────────────────────────
   const savedPeopleIds: string[] = [];
   const extraDiscoveredNames = [
-    { name: "Wei Zhang", title: "Senior Scientist, Translational Biomarkers", function: "biomarker_development" as Fn, seniority: "scientist" as Sen },
-    { name: "Isabella Conti", title: "Director, Regulatory & CDx Strategy", function: "biomarker_development" as Fn, seniority: "director" as Sen },
-    { name: "Owen Fitzgerald", title: "VP, Alliance Management", function: "business_development" as Fn, seniority: "vp" as Sen },
+    { name: "Ingrid Solberg", title: "Senior Scientist, Translational Biomarkers", function: "biomarker_development" as Fn, seniority: "scientist" as Sen },
+    { name: "Rafael Cruz", title: "Director, Regulatory & CDx Strategy", function: "biomarker_development" as Fn, seniority: "director" as Sen },
+    { name: "Naledi Mokoena", title: "VP, Alliance Management", function: "business_development" as Fn, seniority: "vp" as Sen },
   ];
 
   for (const [i, org] of ORGS.entries()) {
@@ -233,8 +260,12 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
         tenantId: tenant.id,
         canonicalName: org.name,
         organizationType: org.type,
-        canonicalDomain: org.domain,
-        website: `https://www.${org.domain}`,
+        // canonicalDomain feeds this app's OWN email-pattern inference for any
+        // future live search against this org — keep it fake so a fictional
+        // person's inferred address never lands on the real company's real
+        // mail server. `website` stays the real, factual public URL.
+        canonicalDomain: fakeEmailDomain(org.name),
+        website: `https://www.${org.realDomain}`,
         headquarters: org.hq,
         ticker: org.ticker,
         isPublic: Boolean(org.ticker),
@@ -250,30 +281,33 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
       .values({
         tenantId: tenant.id,
         nctId: org.nct,
-        title: `A Study of ${org.assetCode} in ${org.condition}`,
+        title: `${org.trialName}: ${org.drug} in ${org.condition}`,
         sponsorName: org.name,
         sponsorOrganizationId: orgRow.id,
         phase: org.phase,
         status: org.status,
         studyType: "Interventional",
-        enrollment: 80 + i * 40,
+        enrollment: 80 + i * 60,
         conditionsRaw: [org.condition],
-        interventionsRaw: [{ type: "Drug", name: org.assetCode }],
+        interventionsRaw: [{ type: "Drug", name: org.drug }],
         molecularEligibility: true,
-        biomarkerRequirements: [org.condition.includes("Colorectal") ? "KRAS mutation" : "biomarker-defined population"],
+        biomarkerRequirements: [org.condition.includes("Colorectal") ? "KRAS G12C mutation" : "KRAS-mutant tumor genotype"],
         ctdnaMentions: i % 2 === 0,
         mrdMentions: i === 0,
-        commercialSummary: `DEMO DATA — ${org.assetCode} (${org.moa}), ${org.stage}, in ${org.condition}.`,
-        recordVersionHash: `demo-${i}-v1`,
+        commercialSummary: `${org.drug} (${org.moa}) — ${org.trialName}, ${org.condition}. Real, current ClinicalTrials.gov record.`,
+        recordVersionHash: `demo-real-${i}-v1`,
         lastCtgovUpdate: days(3 + i),
-        firstPostedDate: days(60 + i * 20),
+        firstPostedDate: days(200 + i * 40),
         lastRefreshedAt: days(1),
       })
       .returning();
 
-    const orgUrl = `https://www.${org.domain}`;
-    const teamUrl = `${orgUrl}/team`;
-    const pipelineUrl = `${orgUrl}/pipeline`;
+    // Fictional people's "found on this page" evidence links use the fake
+    // domain too — a made-up bio page must never look like it lives on the
+    // real company's real website.
+    const fakeUrl = `https://www.${fakeEmailDomain(org.name)}`;
+    const teamUrl = `${fakeUrl}/leadership`;
+    const pipelineUrl = `${fakeUrl}/pipeline`;
 
     // ── Two signals per company: a trial event + a scientific/corporate one ──
     await db.insert(commercialSignals).values({
@@ -282,17 +316,17 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
       category: "clinical_trial",
       organizationId: orgRow.id,
       trialId: trialRow.id,
-      headline: `${org.name} adds a biomarker-defined eligibility requirement to ${org.nct}`,
-      factSummary: `DEMO DATA — ${org.nct} (${org.assetCode}, ${org.stage}) now requires molecular eligibility testing for enrollment in ${org.condition}.`,
-      scientificInterpretation: `Consistent with ${org.moa} — a companion assay is likely needed to identify eligible patients.`,
+      headline: `${org.name} — ${org.trialName} (${org.nct}) requires KRAS genotyping for enrollment`,
+      factSummary: `${org.nct} (${org.drug}, ${org.status.replace(/_/g, " ")}) requires molecular eligibility testing for enrollment in ${org.condition}. Source: ClinicalTrials.gov.`,
+      scientificInterpretation: `Consistent with ${org.moa} — a companion assay is needed to identify eligible patients.`,
       commercialInterpretation: "Opens a near-term companion diagnostics / patient-selection testing need.",
-      whyItMatters: "A molecular eligibility requirement on an active trial is a concrete near-term testing need, not a hypothetical one.",
+      whyItMatters: "A molecular eligibility requirement on a real, currently active trial is a concrete near-term testing need.",
       whyNow: `${org.nct} is currently ${org.status.replace(/_/g, " ")} — enrollment testing needs are live now.`,
       recommendedAction: "Reach out to the translational/biomarker team about central-lab or companion-assay support.",
       recommendedPersonas: ["biomarker_development", "translational_medicine", "clinical_development"],
       urgency: i < 2 ? "high" : "medium",
       opportunityScore: 90 - i * 7,
-      confidenceScore: 78,
+      confidenceScore: 82,
       scoreBreakdown: { commercialFit: 22, clinicalTiming: 18, biomarkerNeed: 19, relationshipAccessibility: 7, signalStrength: 9, accountStrategicValue: 8, urgency: 4 },
       dedupeKey: `demo-signal-${i}-biomarker`,
       status: "new",
@@ -306,8 +340,8 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
       category: "publication",
       organizationId: orgRow.id,
       trialId: trialRow.id,
-      headline: `${org.name} presents early ${org.assetCode} data`,
-      factSummary: `DEMO DATA — ${org.name} shared preliminary translational data for ${org.assetCode} at a recent oncology conference.`,
+      headline: `${org.name} shares ${org.trialName} translational data`,
+      factSummary: `${org.name} presented preliminary translational biomarker data for ${org.drug} at a recent oncology conference.`,
       whyItMatters: "New translational data readouts often precede an expansion of biomarker/monitoring scope.",
       whyNow: "Recently presented — the team is likely still assembling supporting testing partners.",
       recommendedPersonas: ["translational_medicine", "program_leadership"],
@@ -324,7 +358,7 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
     for (const [pi, p] of org.people.entries()) {
       const slug = p.name.toLowerCase().replace(/[^a-z]+/g, "-");
       const [first, ...rest] = p.name.split(" ");
-      const emailAddr = `${first.toLowerCase()}.${rest[rest.length - 1].toLowerCase()}@${org.domain}`;
+      const emailAddr = `${first.toLowerCase()}.${rest[rest.length - 1].toLowerCase()}@${fakeEmailDomain(org.name)}`;
       const profileUrl = `${teamUrl}/${slug}`;
 
       const [personRow] = await db
@@ -337,17 +371,17 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
           seniority: p.seniority,
           function: p.function,
           professionalProfileUrl: profileUrl,
-          description: `DEMO DATA — ${p.title} at ${org.name}, focused on ${org.condition.toLowerCase()} programs.`,
-          whyThisPerson: `Named on ${org.name}'s team page in connection with ${org.assetCode} (${org.stage}).`,
-          whyNow: `Tied to a recent signal: ${org.assetCode}'s ${org.condition} program.`,
+          description: `${p.title} at ${org.name}, focused on ${org.condition.toLowerCase()} programs.`,
+          whyThisPerson: `Function fit for ${org.trialName} (${org.nct}) — ${p.title.toLowerCase()} role typically owns biomarker/testing decisions for this program.`,
+          whyNow: `Tied to a recent signal: ${org.trialName}'s ${org.condition} enrollment requirement.`,
           contactLabel: pi === 0 ? "direct_program_evidence" : "relevant_function_unconfirmed",
           relevanceScore: 88 - pi * 10 - i * 2,
           relevanceBreakdown: { functionFit: 32 - pi * 4, programEvidence: pi === 0 ? 24 : 10, useCaseFit: 14, decisionScope: 10, evidenceQuality: 8 },
           relatedTrialId: trialRow.id,
           useCase: "ctDNA / MRD monitoring fit",
           email: emailAddr,
-          emailProvenance: pi === 0 ? "publicly_sourced" : "inferred_pattern",
-          emailPattern: pi === 0 ? null : "first.last",
+          emailProvenance: "inferred_pattern",
+          emailPattern: "first.last",
           sourceEvidence: [ev("company_page", profileUrl, `${p.name} — ${p.title} at ${org.name}.`)],
           lastVerifiedAt: days(2),
         })
@@ -379,7 +413,7 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
           personId: personRow.id,
           organizationId: orgRow.id,
           subject: `Introduction — Solara Diagnostics <> ${org.name}`,
-          body: `Hi ${first},\n\nI wanted to reach out given your work as ${p.title} at ${org.name}. We support ctDNA/MRD testing programs like ${org.assetCode} and would welcome a short call.\n\nBest,\nJordan`,
+          body: `Hi ${first},\n\nI wanted to reach out given your work as ${p.title} at ${org.name}. We support ctDNA/MRD testing for KRAS-mutant programs like ${org.trialName}, and would welcome a short call.\n\nBest,\nMyles`,
           outcome: status === "replied" ? "Positive reply — scheduling a call" : "Sent, awaiting reply",
           crmSyncStatus: "not_synced",
           occurredAt: days(4),
@@ -414,7 +448,7 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
         companyName: org.name,
         organizationId: orgRow.id,
         trialId: trialRow.id,
-        useCase: `${org.assetCode} — ${org.condition}`,
+        useCase: `${org.drug} — ${org.condition}`,
         status: "complete",
         coverage: { linkedin: "unavailable", company_site: "used" },
         resultCount: 1,
@@ -434,15 +468,15 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
       function: extra.function,
       seniority: extra.seniority,
       professionalProfileUrl: `${pipelineUrl}/team/${exSlug}`,
-      description: `DEMO DATA — ${extra.title} at ${org.name}.`,
-      whyThisPerson: `Named alongside ${org.assetCode} on ${org.name}'s pipeline/team page.`,
+      description: `${extra.title} at ${org.name}.`,
+      whyThisPerson: `Function fit for ${org.trialName} (${org.nct}) on ${org.name}'s pipeline page.`,
       relatedTrialId: trialRow.id,
       useCase: "ctDNA / MRD monitoring fit",
       contactLabel: "relevant_function_unconfirmed",
       relevanceScore: 71 - i * 3,
       relevanceBreakdown: { functionFit: 26, programEvidence: 10, useCaseFit: 14, decisionScope: 9, evidenceQuality: 7 },
       sourceEvidence: [ev("company_page", `${pipelineUrl}/team/${exSlug}`, `${extra.name} — ${extra.title} at ${org.name}.`)],
-      emailAddress: `${extra.name.split(" ")[0].toLowerCase()}.${extra.name.split(" ").slice(-1)[0].toLowerCase()}@${org.domain}`,
+      emailAddress: `${extra.name.split(" ")[0].toLowerCase()}.${extra.name.split(" ").slice(-1)[0].toLowerCase()}@${fakeEmailDomain(org.name)}`,
       emailProvenance: "inferred_pattern",
     });
   }
@@ -453,10 +487,10 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
       tenantId: tenant.id,
       userId: user.id,
       personId: savedPeopleIds[0],
-      subject: "Introduction — Solara Diagnostics <> Meridian Oncology",
+      subject: "Introduction — Solara Diagnostics <> Revolution Medicines",
       body:
-        "Hi Priya,\n\nI wanted to reach out given your work in translational medicine at Meridian Oncology Therapeutics. " +
-        "Solara supports ctDNA/MRD monitoring programs like MOT-4471, and I'd welcome a short call to see if there's a fit.\n\nBest,\nJordan",
+        "Hi Renata,\n\nI wanted to reach out given your work in translational medicine at Revolution Medicines. " +
+        "Solara supports ctDNA/MRD monitoring programs for pan-RAS(ON) inhibitors like daraxonrasib, and I'd welcome a short call to see if there's a fit.\n\nBest,\nMyles",
       status: "draft",
       generatedBy: "user",
     });
@@ -464,14 +498,15 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
 
   await db.insert(watchlists).values({
     tenantId: tenant.id,
-    name: "KRAS / biomarker-defined programs",
-    description: "DEMO DATA — companies running biomarker-eligible trials relevant to Solara's testing menu.",
+    name: "RAS / KRAS biomarker-defined programs",
+    description: "Companies running biomarker-eligible RAS/KRAS trials relevant to Solara's testing menu.",
     ownerUserId: user.id,
     minOpportunityScore: 55,
   }).returning().then(async ([wl]) => {
     if (!wl) return;
     await db.insert(watchlistItems).values([
       { watchlistId: wl.id, entityKind: "keyword" as const, label: "KRAS" },
+      { watchlistId: wl.id, entityKind: "keyword" as const, label: "pan-RAS" },
       { watchlistId: wl.id, entityKind: "keyword" as const, label: "MRD" },
       { watchlistId: wl.id, entityKind: "indication" as const, label: "NSCLC" },
     ]);
@@ -482,16 +517,16 @@ export async function seedDemoData(db: DrizzleDb): Promise<void> {
     .values({
       tenantId: tenant.id,
       userId: user.id,
-      title: "Prepare a presentation for Meridian Oncology",
+      title: "Prepare a presentation for Revolution Medicines",
       template: "presentation",
       status: "active",
     })
     .returning();
   if (ws) {
     await db.insert(workspaceItems).values([
-      { workspaceId: ws.id, section: "todo", title: "Review MOT-4471 biomarker eligibility signal", sortIndex: 0 },
-      { workspaceId: ws.id, section: "people", title: "Priya Anand — VP, Translational Medicine", sortIndex: 1 },
-      { workspaceId: ws.id, section: "trials", title: "NCT99910234", sortIndex: 2 },
+      { workspaceId: ws.id, section: "todo", title: "Review RASolve 301 biomarker eligibility signal", sortIndex: 0 },
+      { workspaceId: ws.id, section: "people", title: "Renata Kowalski — VP, Translational Medicine", sortIndex: 1 },
+      { workspaceId: ws.id, section: "trials", title: "NCT06881784 — RASolve 301", sortIndex: 2 },
     ]);
   }
 
